@@ -34,7 +34,8 @@ class AgentManager:
         self.openai_analysis_tool = OpenAIDocumentAnalysisTool()
         self.calendar_tool = None
         
-        if settings.GOOGLE_CALENDAR_CREDENTIALS:
+        # Check if Google Calendar credentials exist and are not None or empty
+        if hasattr(settings, 'GOOGLE_CALENDAR_CREDENTIALS') and settings.GOOGLE_CALENDAR_CREDENTIALS:
             self.calendar_tool = GoogleCalendarTool()
         
         # Set up agent

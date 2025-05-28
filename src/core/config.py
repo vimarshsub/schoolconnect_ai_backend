@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # OpenAI settings
     OPENAI_API_KEY: str = Field("", env="OPENAI_API_KEY")
     
+    # Google Calendar settings
+    GOOGLE_CALENDAR_CREDENTIALS: Optional[str] = Field(None, env="GOOGLE_CALENDAR_CREDENTIALS")
+    
     # Internal settings with defaults (not required as environment variables)
     DEBUG: bool = False
     PORT: int = 8000
