@@ -5,7 +5,7 @@ Core agent logic for AI-powered announcement analysis.
 import os
 import logging
 from typing import Dict, List, Any, Optional
-from langchain_openai import ChatOpenAI
+from langchain.chat_models import ChatOpenAI
 from langchain.agents import AgentExecutor
 from langchain.agents.openai_functions_agent.base import create_openai_functions_agent
 from langchain.prompts import MessagesPlaceholder
