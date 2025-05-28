@@ -46,7 +46,7 @@ app.add_middleware(
 from src.api.routes import auth, ingestion, analysis, health
 
 # Include API routes
-app.include_router(health.router, prefix="/health", tags=["health"])
+app.include_router(health.router, tags=["health"])  # Removed prefix to expose health endpoint at /health
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(ingestion.router, prefix="/api/ingestion", tags=["ingestion"])
 app.include_router(analysis.router, prefix="/api", tags=["analysis"])
