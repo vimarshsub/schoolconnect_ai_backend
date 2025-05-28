@@ -2,7 +2,7 @@ airtable-python-wrapper==0.15.3
 fastapi==0.104.1
 flask==2.3.3
 fpdf2==2.7.5
-langchain==0.0.335
+langchain>=0.1.0
 langchain-openai>=0.3.0
 openai>=1.10.0
 pdf2image==1.16.3
