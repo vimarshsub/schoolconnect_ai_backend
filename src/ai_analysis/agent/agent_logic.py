@@ -6,11 +6,9 @@ import os
 import logging
 from typing import Dict, List, Any, Optional
 from langchain.chat_models import ChatOpenAI
-from langchain.agents import AgentExecutor
-from langchain.agents.openai_functions_agent.base import create_openai_functions_agent
+from langchain.agents import initialize_agent, AgentType
 from langchain.prompts import MessagesPlaceholder
-from langchain_core.messages import SystemMessage
-from langchain_core.tools import Tool
+from langchain.tools import Tool
 
 from src.core.config import get_settings
 from src.ai_analysis.tools.airtable_tool import AirtableTool
@@ -42,7 +40,7 @@ class AgentManager:
         # Set up agent
         self.agent_executor = self._setup_agent()
     
-    def _setup_agent(self) -> AgentExecutor:
+    def _setup_agent(self):
         """
         Set up the LangChain agent with tools.
         
@@ -103,29 +101,17 @@ You can:
 Always be helpful, clear, and concise in your responses. If you encounter any errors, explain them clearly and suggest alternatives.
 """
         
-        # Create agent - using the correct signature for langchain-openai 0.0.5
-        # The system_message is passed as part of the prompt instead
-        from langchain.prompts import ChatPromptTemplate
-        
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", system_message_content),
-            MessagesPlaceholder(variable_name=MEMORY_KEY),
-            ("user", "{input}"),
-            ("user", "{agent_scratchpad}")  # Add the required agent_scratchpad variable
-        ])
-        
-        agent = create_openai_functions_agent(
+        # Create agent using the legacy initialize_agent method
+        agent_executor = initialize_agent(
+            tools=tools,
             llm=llm,
-            tools=tools,
-            prompt=prompt
-        )
-        
-        # Create agent executor
-        agent_executor = AgentExecutor(
-            agent=agent,
-            tools=tools,
+            agent=AgentType.OPENAI_FUNCTIONS,
             verbose=True,
-            handle_parsing_errors=True
+            handle_parsing_errors=True,
+            agent_kwargs={
+                "system_message": system_message_content,
+                "extra_prompt_messages": [MessagesPlaceholder(variable_name=MEMORY_KEY)]
+            }
         )
         
         return agent_executor
