@@ -7,7 +7,6 @@ import logging
 from typing import Dict, List, Any, Optional
 from langchain.chat_models import ChatOpenAI
 from langchain.agents import initialize_agent, AgentType
-from langchain.prompts import MessagesPlaceholder
 from langchain.tools import Tool
 
 from src.core.config import get_settings
@@ -89,30 +88,14 @@ class AgentManager:
                 )
             )
         
-        # Define system message content
-        system_message_content = """You are an AI assistant that helps users manage and analyze announcements and their attachments.
-            
-You can:
-1. Fetch all announcements from the database
-2. Search for specific announcements by text
-3. Get attachments from announcements
-4. Analyze PDF documents (summarize, extract action items, analyze sentiment)
-5. Create calendar events based on document content
-
-Always be helpful, clear, and concise in your responses. If you encounter any errors, explain them clearly and suggest alternatives.
-"""
-        
         # Create agent using the legacy initialize_agent method
+        # Remove custom prompt and system_message arguments which are causing validation errors
         agent_executor = initialize_agent(
             tools=tools,
             llm=llm,
             agent=AgentType.OPENAI_FUNCTIONS,
             verbose=True,
-            handle_parsing_errors=True,
-            agent_kwargs={
-                "system_message": system_message_content,
-                "extra_prompt_messages": [MessagesPlaceholder(variable_name=MEMORY_KEY)]
-            }
+            handle_parsing_errors=True
         )
         
         return agent_executor
