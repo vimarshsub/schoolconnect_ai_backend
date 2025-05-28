@@ -11,22 +11,9 @@ from functools import lru_cache
 class Settings(BaseSettings):
     """Application settings loaded from environment variables with defaults."""
     
-    # General settings
-    DEBUG: bool = Field(False, env="DEBUG")
-    LOG_LEVEL: str = Field("INFO", env="LOG_LEVEL")
-    PORT: int = Field(8000, env="PORT")
-    
-    # API settings
-    API_PREFIX: str = Field("/api", env="API_PREFIX")
-    CORS_ORIGINS: List[str] = Field(["*"], env="CORS_ORIGINS")
-    
     # SchoolConnect settings
     SCHOOLCONNECT_USERNAME: str = Field("", env="SCHOOLCONNECT_USERNAME")
     SCHOOLCONNECT_PASSWORD: str = Field("", env="SCHOOLCONNECT_PASSWORD")
-    SCHOOLCONNECT_GRAPHQL_URL: str = Field(
-        "https://connect.schoolstatus.com/graphql", 
-        env="SCHOOLCONNECT_GRAPHQL_URL"
-    )
     
     # Airtable settings
     AIRTABLE_API_KEY: str = Field("", env="AIRTABLE_API_KEY")
@@ -35,13 +22,15 @@ class Settings(BaseSettings):
     
     # OpenAI settings
     OPENAI_API_KEY: str = Field("", env="OPENAI_API_KEY")
-    OPENAI_MODEL: str = Field("gpt-4o", env="OPENAI_MODEL")
     
-    # Google Calendar settings
-    GOOGLE_CALENDAR_CREDENTIALS: Optional[str] = Field(None, env="GOOGLE_CALENDAR_CREDENTIALS")
-    
-    # File storage settings
-    TEMP_FILE_DIR: str = Field("/tmp/schoolconnect_ai", env="TEMP_FILE_DIR")
+    # Internal settings with defaults (not required as environment variables)
+    DEBUG: bool = False
+    PORT: int = 8000
+    API_PREFIX: str = "/api"
+    CORS_ORIGINS: List[str] = ["*"]
+    SCHOOLCONNECT_GRAPHQL_URL: str = "https://connect.schoolstatus.com/graphql"
+    OPENAI_MODEL: str = "gpt-4o"
+    TEMP_FILE_DIR: str = "/tmp/schoolconnect_ai"
     
     class Config:
         env_file = ".env"
