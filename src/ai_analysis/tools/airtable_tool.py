@@ -28,10 +28,13 @@ class AirtableTool:
         self.download_dir = os.path.join(self.settings.TEMP_FILE_DIR, "agent_downloads")
         os.makedirs(self.download_dir, exist_ok=True)
     
-    def get_all_announcements(self) -> Dict[str, Any]:
+    def get_all_announcements(self, input_text: Optional[str] = None) -> Dict[str, Any]:
         """
         Fetch all announcements from Airtable.
         
+        Args:
+            input_text: Optional input text (not used, but required for agent tool compatibility)
+            
         Returns:
             Dictionary with announcements list and count
         """
