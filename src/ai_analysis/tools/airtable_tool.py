@@ -352,6 +352,33 @@ class AirtableTool:
             logger.warning(f"Error parsing date '{sent_time_str}': {str(e)}")
             return None
     
+    def _get_first_attachment_url(self, record_fields: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Helper to get the URL and filename of the first attachment from a record.
+        
+        Args:
+            record_fields: Record fields dictionary
+            
+        Returns:
+            Tuple of (URL, filename) or (None, None) if no attachment found
+        """
+        # Try different field names for attachments (for compatibility)
+        attachment_field_names = ["Attachments", "Documents", "Files", "Attachment"]
+        
+        for field_name in attachment_field_names:
+            attachments = record_fields.get(field_name)
+            if attachments and isinstance(attachments, list) and len(attachments) > 0:
+                first_attachment = attachments[0]
+                if isinstance(first_attachment, dict) and "url" in first_attachment:
+                    url = first_attachment.get("url")
+                    filename = first_attachment.get("filename", "downloaded_file")
+                    logger.info(f"Found attachment in field '{field_name}': {url}, filename: {filename}")
+                    return url, filename
+        
+        # If we get here, no attachment was found
+        logger.warning(f"No attachments found in record fields: {list(record_fields.keys())}")
+        return None, None
+    
     def get_attachment_from_announcement(self, announcement_id: Optional[str] = None, 
                                         search_term: Optional[str] = None,
                                         get_latest: bool = False) -> Tuple[str, Optional[str]]:
@@ -374,52 +401,81 @@ class AirtableTool:
         try:
             # Get the announcement record
             record = None
+            target_record_fields = None
+            
+            logger.info(f"Attempting to get attachment: id={announcement_id}, search='{search_term}', latest={get_latest}")
             
             if announcement_id:
-                # Get by ID
+                # First try direct record retrieval by ID
+                logger.info(f"Attempting to get record by ID: {announcement_id}")
                 record = self.client.get_record_by_id(announcement_id)
-                if not record:
-                    return f"No announcement found with ID '{announcement_id}'.", None
+                
+                if record and "fields" in record:
+                    target_record_fields = record["fields"]
+                    logger.info(f"Found record by ID: {announcement_id}")
+                else:
+                    # If direct ID lookup fails, try searching by title (in case announcement_id is actually a title)
+                    logger.info(f"Record not found by ID, trying as search term: {announcement_id}")
+                    search_results = self.search_announcements(announcement_id)
+                    
+                    if isinstance(search_results, list) and search_results:
+                        # Use the first matching record
+                        target_record_fields = search_results[0]
+                        logger.info(f"Found record by searching for: {announcement_id}")
+                    else:
+                        error_msg = f"Error: Announcement with ID or title '{announcement_id}' not found."
+                        logger.warning(error_msg)
+                        return error_msg, None
             
             elif search_term:
                 # Search for the announcement
-                records = self.client.search_records(search_term)
-                if not records:
-                    return f"No announcements found matching '{search_term}'.", None
+                logger.info(f"Searching for announcement with term: {search_term}")
+                search_results = self.search_announcements(search_term)
                 
-                # Use the first match
-                record = records[0]
+                if isinstance(search_results, list) and search_results:
+                    # Use the first matching record
+                    target_record_fields = search_results[0]
+                    logger.info(f"Found record by search term: {search_term}")
+                else:
+                    error_msg = f"No announcement found matching search term '{search_term}'."
+                    logger.warning(error_msg)
+                    return error_msg, None
             
             elif get_latest:
                 # Get the latest announcement
-                records = self.client.get_all_records()
-                if not records:
-                    return "No announcements found.", None
+                logger.info("Getting latest announcement")
+                latest_record = self.client.get_latest_record()
                 
-                # Sort by SentTime (descending)
-                records.sort(key=lambda r: r.get("fields", {}).get("SentTime", ""), reverse=True)
-                record = records[0]
+                if latest_record and "fields" in latest_record:
+                    target_record_fields = latest_record["fields"]
+                    logger.info("Found latest record")
+                else:
+                    error_msg = "Error: Could not retrieve the latest announcement or no announcements exist."
+                    logger.warning(error_msg)
+                    return error_msg, None
             
             else:
-                return "Error: Must provide either announcement_id, search_term, or get_latest=True.", None
+                error_msg = "Error: No criteria (ID, search term, or latest) provided to find an announcement."
+                logger.warning(error_msg)
+                return error_msg, None
             
-            # Get attachment URL from the record
-            fields = record.get("fields", {})
-            documents = fields.get("Documents", [])
-            
-            if not documents:
-                announcement_title = fields.get("Title", "Unknown")
-                return f"No attachments found for announcement '{announcement_title}'.", None
-            
-            # Use the first attachment
-            attachment = documents[0]
-            url = attachment.get("url")
-            filename = attachment.get("filename")
-            
-            if not url:
-                return "Error: Attachment URL not found.", None
-            
-            return url, filename
+            # Get attachment URL from the record fields
+            if target_record_fields:
+                url, filename = self._get_first_attachment_url(target_record_fields)
+                
+                if url and filename:
+                    logger.info(f"Found attachment URL: {url}, filename: {filename}")
+                    return url, filename
+                else:
+                    ann_title = target_record_fields.get("Title", "[Unknown Title]")
+                    error_msg = f"No attachment found in the announcement titled '{ann_title}'."
+                    logger.warning(error_msg)
+                    return error_msg, None
+            else:
+                # This case should ideally be caught by earlier checks
+                error_msg = "Error: No matching announcement found to get attachment from."
+                logger.warning(error_msg)
+                return error_msg, None
         
         except Exception as e:
             error_msg = f"Error getting attachment: {str(e)}"
@@ -436,27 +492,84 @@ class AirtableTool:
         Returns:
             Local file path or error message
         """
+        if not url:
+            error_msg = "Error: No URL provided for download."
+            logger.error(error_msg)
+            return error_msg
+        
         try:
-            # Extract filename from URL
-            filename = url.split("/")[-1]
-            if not filename:
-                filename = "downloaded_file"
+            logger.info(f"Attempting to download file from URL: {url}")
             
-            # Create local file path
-            local_path = os.path.join(self.download_dir, filename)
+            # Create download directory if it doesn't exist
+            os.makedirs(self.download_dir, exist_ok=True)
             
-            # Download the file
-            response = requests.get(url, stream=True)
+            # Get response with stream=True for large files
+            response = requests.get(url, stream=True, timeout=30)
             response.raise_for_status()
             
-            with open(local_path, "wb") as f:
+            # Try to get filename from Content-Disposition header
+            content_disposition = response.headers.get("content-disposition")
+            filename = None
+            
+            if content_disposition:
+                import re
+                fname = re.findall("filename=(.+)", content_disposition)
+                if fname:
+                    filename = fname[0].strip("\"").strip("'")  # Handle both quote types
+            
+            # If no filename in header, extract from URL
+            if not filename:
+                from urllib.parse import unquote
+                filename = unquote(url.split("/")[-1].split("?")[0])
+            
+            # Fallback filename if still not found
+            if not filename or filename == "":
+                filename = "downloaded_attachment"
+            
+            # Ensure filename has an extension based on content-type
+            if "." not in os.path.basename(filename):
+                content_type = response.headers.get("content-type", "").lower()
+                if "pdf" in content_type:
+                    filename += ".pdf"
+                elif "openxmlformats-officedocument.wordprocessingml.document" in content_type:
+                    filename += ".docx"
+                elif "plain" in content_type:
+                    filename += ".txt"
+                else:
+                    filename += ".pdf"  # Default to PDF
+            
+            # Sanitize filename to prevent path traversal or invalid characters
+            filename = "".join(c for c in filename if c.isalnum() or c in (".", "-", "_")).rstrip()
+            if not filename:
+                filename = "sanitized_download.pdf"
+            
+            # Create full local path
+            local_filepath = os.path.join(self.download_dir, filename)
+            
+            # Download the file in chunks
+            with open(local_filepath, "wb") as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
             
-            logger.info(f"Downloaded file to {local_path}")
-            return local_path
+            logger.info(f"File downloaded successfully to {local_filepath}")
+            return local_filepath
+        
+        except requests.exceptions.Timeout:
+            error_msg = f"Error downloading file from {url}: Request timed out."
+            logger.error(error_msg)
+            return error_msg
+        
+        except requests.exceptions.RequestException as e:
+            error_msg = f"Error downloading file from {url}: {str(e)}"
+            logger.error(error_msg)
+            return error_msg
+        
+        except IOError as e:
+            error_msg = f"Error saving file: {str(e)}"
+            logger.error(error_msg)
+            return error_msg
         
         except Exception as e:
-            error_msg = f"Error downloading file: {str(e)}"
-            logger.error(error_msg, exc_info=True)
+            error_msg = f"An unexpected error occurred during download: {str(e)}"
+            logger.error(error_msg)
             return error_msg
