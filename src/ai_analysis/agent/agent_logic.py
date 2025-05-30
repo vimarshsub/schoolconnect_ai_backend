@@ -8,7 +8,7 @@ from typing import Dict, List, Any, Optional
 from langchain.chat_models import ChatOpenAI
 from langchain.agents import initialize_agent, AgentType
 from langchain.tools import Tool, StructuredTool
-from pydantic import BaseModel, Field
+from pydantic.v1 import BaseModel, Field  # Explicitly use pydantic.v1 to match LangChain
 
 from src.core.config import get_settings
 from src.ai_analysis.tools.airtable_tool import AirtableTool
