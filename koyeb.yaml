@@ -1,0 +1,39 @@
+version: 2
+default: &default
+  type: python
+  tag: latest
+
+services:
+  - name: schoolconnect-ai-backend
+    <<: *default
+    git:
+      repository: github.com/yourusername/schoolconnect-ai-backend
+      branch: main
+    build:
+      builder: pip
+      buildCommand: pip install -r requirements.txt
+    run:
+      command: python main.py
+      port: 8000
+    envs:
+      - key: DEBUG
+        value: "False"
+      - key: LOG_LEVEL
+        value: "INFO"
+      - key: CORS_ORIGINS
+        value: '["https://yourdomain.com"]'
+      - key: AIRTABLE_API_KEY
+        value: "REPLACE_WITH_YOUR_AIRTABLE_API_KEY"
+        type: secret
+      - key: AIRTABLE_BASE_ID
+        value: "REPLACE_WITH_YOUR_AIRTABLE_BASE_ID"
+      - key: AIRTABLE_TABLE_NAME
+        value: "Announcements"
+      - key: OPENAI_API_KEY
+        value: "REPLACE_WITH_YOUR_OPENAI_API_KEY"
+        type: secret
+      - key: OPENAI_MODEL
+        value: "gpt-4o"
+    scaling:
+      min: 1
+      max: 1

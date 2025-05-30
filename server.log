@@ -1,0 +1,130 @@
+nohup: ignoring input
+2025-05-27 00:28:48,489 - schoolconnect_ai - INFO - Airtable connection initialized successfully
+INFO:     Started server process [16004]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:48714 - "POST /api/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33970 - "POST /api/ingestion/sync HTTP/1.1" 200 OK
+2025-05-27 00:29:08,990 - schoolconnect_ai - INFO - Airtable connection initialized successfully
+2025-05-27 00:29:08,990 - schoolconnect_ai - INFO - Starting announcement fetch task
+2025-05-27 00:29:08,990 - schoolconnect_ai - INFO - Attempting login to SchoolConnect
+2025-05-27 00:29:09,258 - schoolconnect_ai - INFO - Session cookies after login: {'suppress_zendesk': 'false', 'current_timezone': 'America%2FNew_York', 'current_timezone_title': 'America+-+New+York', 'user.id': 'eyJfcmFpbHMiOnsibWVzc2FnZSI6Ik9EYzRNRFUwTkE9PSIsImV4cCI6bnVsbCwicHVyIjoiY29va2llLnVzZXIuaWQifX0%3D--cf56356b007a38fe462cb89159a75434a5c738e8', 'remember_user_token': 'eyJfcmFpbHMiOnsibWVzc2FnZSI6IlcxczROemd3TlRRMFhTd2lKREpoSkRFd0pIbzBWekZ3UlV4a1kxVkZaRWhtZW1aNFRuRjZZV1ZtT1RRd1pEa3lORGd5T0RFME9HRm1PVE15TVRNeFltWXhNV0UzTTJRM09DSXNJakUzTkRnek1qQXhORGt1TVRjeE5UTTJJbDA9IiwiZXhwIjoiMjAyNS0wNy0yN1QwNDoyOTowOS4xNzFaIiwicHVyIjoiY29va2llLnJlbWVtYmVyX3VzZXJfdG9rZW4ifX0%3D--72295518d6f9fbebc5713fd8729eb486c1045505', '_classtag_session': 'Sdy68WzOFhB3lJkAD2C6JVp4SnsfjpG99RhF021z1m4SfvdfbndvnZmd70SjXGj8pDaIGxY09gFlu69vuOVVAzaSZUh3kA3%2Fzp2WjBXtmLLnre7tPx1BIgNqo631bc42VI350ZzOU%2BQ93lUQKreuMVzlZ5cNGm2Fd6V7DQDR2AAGy0fOPlxbOap5JytA4nJbAd%2FhfBLraRPjbwTggeefpG04YzcsgCbOJq6rblF%2FvSRZeNt%2Bz6KLqql4VoXjwJj0hAtP7AjY30OQpQuB6O%2BpuRGwKd0Y6giA3r6SD9poyNqIehCb4zeZZuHMs62EsYbgq6poR1mYpWO0GuXMkBrlbc9SqQ%2FHDU2aIHvhz1YZeFAgUr5Nb238918EmhwoCpbX5xQg8is20gkcNRCjTrHWaVTKwo4UBTIpySar4hC0Qm5cDJGLuSUXG7SvS1ZnAVog7rcEqzj4lRkzNTnOrzC0JptvzVxdvmCMYtbtQFKzbxlsKBDqfKHkIQ5w5B2ZvpN1eEi2fmmZOUZiNCI9HVeCTARHSoAeLkvAuDnb4qE%3D--4tLe7MJtmmjBp02j--x2TtUTVszlOZMVr5UDajaw%3D%3D'}
+2025-05-27 00:29:09,258 - schoolconnect_ai - INFO - SchoolConnect login successful
+2025-05-27 00:29:09,258 - schoolconnect_ai - INFO - Fetching announcements page 1
+2025-05-27 00:29:09,258 - schoolconnect_ai - INFO - Fetching paginated announcements. After cursor: None, Items per page: 20
+2025-05-27 00:29:09,373 - schoolconnect_ai - INFO - Fetched 10 announcements on page 1
+2025-05-27 00:29:10,373 - schoolconnect_ai - INFO - Total announcements fetched: 10
+2025-05-27 00:29:10,374 - schoolconnect_ai - INFO - Fetching documents for announcement QW5ub3VuY2VtZW50LTE2MTUwMTc0
+2025-05-27 00:29:10,395 - schoolconnect_ai - ERROR - Error fetching documents: 404 Client Error: Not Found for url: https://connect.schoolstatus.com/graphql
+Traceback (most recent call last):
+  File "/home/ubuntu/merged_project/src/data_ingestion/schoolconnect/client.py", line 266, in fetch_announcement_documents
+    response.raise_for_status()
+  File "/usr/local/lib/python3.11/dist-packages/requests/models.py", line 1021, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 404 Client Error: Not Found for url: https://connect.schoolstatus.com/graphql
+2025-05-27 00:29:10,396 - schoolconnect_ai - INFO - Processed announcement 16150174 with 0 documents
+2025-05-27 00:29:10,396 - schoolconnect_ai - INFO - Fetching documents for announcement QW5ub3VuY2VtZW50LTE2MTA0MzE4
+2025-05-27 00:29:10,417 - schoolconnect_ai - ERROR - Error fetching documents: 404 Client Error: Not Found for url: https://connect.schoolstatus.com/graphql
+Traceback (most recent call last):
+  File "/home/ubuntu/merged_project/src/data_ingestion/schoolconnect/client.py", line 266, in fetch_announcement_documents
+    response.raise_for_status()
+  File "/usr/local/lib/python3.11/dist-packages/requests/models.py", line 1021, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 404 Client Error: Not Found for url: https://connect.schoolstatus.com/graphql
+2025-05-27 00:29:10,417 - schoolconnect_ai - INFO - Processed announcement 16104318 with 0 documents
+2025-05-27 00:29:10,417 - schoolconnect_ai - INFO - Fetching documents for announcement QW5ub3VuY2VtZW50LTE2MDk3NzA4
+2025-05-27 00:29:10,436 - schoolconnect_ai - ERROR - Error fetching documents: 404 Client Error: Not Found for url: https://connect.schoolstatus.com/graphql
+Traceback (most recent call last):
+  File "/home/ubuntu/merged_project/src/data_ingestion/schoolconnect/client.py", line 266, in fetch_announcement_documents
+    response.raise_for_status()
+  File "/usr/local/lib/python3.11/dist-packages/requests/models.py", line 1021, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 404 Client Error: Not Found for url: https://connect.schoolstatus.com/graphql
+2025-05-27 00:29:10,437 - schoolconnect_ai - INFO - Processed announcement 16097708 with 0 documents
+2025-05-27 00:29:10,437 - schoolconnect_ai - INFO - Fetching documents for announcement QW5ub3VuY2VtZW50LTE2MDk3NTQ3
+2025-05-27 00:29:10,455 - schoolconnect_ai - ERROR - Error fetching documents: 404 Client Error: Not Found for url: https://connect.schoolstatus.com/graphql
+Traceback (most recent call last):
+  File "/home/ubuntu/merged_project/src/data_ingestion/schoolconnect/client.py", line 266, in fetch_announcement_documents
+    response.raise_for_status()
+  File "/usr/local/lib/python3.11/dist-packages/requests/models.py", line 1021, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 404 Client Error: Not Found for url: https://connect.schoolstatus.com/graphql
+2025-05-27 00:29:10,456 - schoolconnect_ai - INFO - Processed announcement 16097547 with 0 documents
+2025-05-27 00:29:10,456 - schoolconnect_ai - INFO - Fetching documents for announcement QW5ub3VuY2VtZW50LTE2MDk3NTE4
+2025-05-27 00:29:10,474 - schoolconnect_ai - ERROR - Error fetching documents: 404 Client Error: Not Found for url: https://connect.schoolstatus.com/graphql
+Traceback (most recent call last):
+  File "/home/ubuntu/merged_project/src/data_ingestion/schoolconnect/client.py", line 266, in fetch_announcement_documents
+    response.raise_for_status()
+  File "/usr/local/lib/python3.11/dist-packages/requests/models.py", line 1021, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 404 Client Error: Not Found for url: https://connect.schoolstatus.com/graphql
+2025-05-27 00:29:10,475 - schoolconnect_ai - INFO - Processed announcement 16097518 with 0 documents
+2025-05-27 00:29:10,475 - schoolconnect_ai - INFO - Fetching documents for announcement QW5ub3VuY2VtZW50LTE2MDk0MjA1
+2025-05-27 00:29:10,502 - schoolconnect_ai - ERROR - Error fetching documents: 404 Client Error: Not Found for url: https://connect.schoolstatus.com/graphql
+Traceback (most recent call last):
+  File "/home/ubuntu/merged_project/src/data_ingestion/schoolconnect/client.py", line 266, in fetch_announcement_documents
+    response.raise_for_status()
+  File "/usr/local/lib/python3.11/dist-packages/requests/models.py", line 1021, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 404 Client Error: Not Found for url: https://connect.schoolstatus.com/graphql
+2025-05-27 00:29:10,502 - schoolconnect_ai - INFO - Processed announcement 16094205 with 0 documents
+2025-05-27 00:29:10,502 - schoolconnect_ai - INFO - Fetching documents for announcement QW5ub3VuY2VtZW50LTE2MDk0MDQ2
+2025-05-27 00:29:10,519 - schoolconnect_ai - ERROR - Error fetching documents: 404 Client Error: Not Found for url: https://connect.schoolstatus.com/graphql
+Traceback (most recent call last):
+  File "/home/ubuntu/merged_project/src/data_ingestion/schoolconnect/client.py", line 266, in fetch_announcement_documents
+    response.raise_for_status()
+  File "/usr/local/lib/python3.11/dist-packages/requests/models.py", line 1021, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 404 Client Error: Not Found for url: https://connect.schoolstatus.com/graphql
+2025-05-27 00:29:10,520 - schoolconnect_ai - INFO - Processed announcement 16094046 with 0 documents
+2025-05-27 00:29:10,520 - schoolconnect_ai - INFO - Fetching documents for announcement QW5ub3VuY2VtZW50LTE2MDgyOTQ0
+2025-05-27 00:29:10,539 - schoolconnect_ai - ERROR - Error fetching documents: 404 Client Error: Not Found for url: https://connect.schoolstatus.com/graphql
+Traceback (most recent call last):
+  File "/home/ubuntu/merged_project/src/data_ingestion/schoolconnect/client.py", line 266, in fetch_announcement_documents
+    response.raise_for_status()
+  File "/usr/local/lib/python3.11/dist-packages/requests/models.py", line 1021, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 404 Client Error: Not Found for url: https://connect.schoolstatus.com/graphql
+2025-05-27 00:29:10,539 - schoolconnect_ai - INFO - Processed announcement 16082944 with 0 documents
+2025-05-27 00:29:10,539 - schoolconnect_ai - INFO - Fetching documents for announcement QW5ub3VuY2VtZW50LTE2MDgyNzkx
+2025-05-27 00:29:10,573 - schoolconnect_ai - ERROR - Error fetching documents: 404 Client Error: Not Found for url: https://connect.schoolstatus.com/graphql
+Traceback (most recent call last):
+  File "/home/ubuntu/merged_project/src/data_ingestion/schoolconnect/client.py", line 266, in fetch_announcement_documents
+    response.raise_for_status()
+  File "/usr/local/lib/python3.11/dist-packages/requests/models.py", line 1021, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 404 Client Error: Not Found for url: https://connect.schoolstatus.com/graphql
+2025-05-27 00:29:10,573 - schoolconnect_ai - INFO - Processed announcement 16082791 with 0 documents
+2025-05-27 00:29:10,573 - schoolconnect_ai - INFO - Fetching documents for announcement QW5ub3VuY2VtZW50LTE2MDU3Mzk0
+2025-05-27 00:29:10,592 - schoolconnect_ai - ERROR - Error fetching documents: 404 Client Error: Not Found for url: https://connect.schoolstatus.com/graphql
+Traceback (most recent call last):
+  File "/home/ubuntu/merged_project/src/data_ingestion/schoolconnect/client.py", line 266, in fetch_announcement_documents
+    response.raise_for_status()
+  File "/usr/local/lib/python3.11/dist-packages/requests/models.py", line 1021, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 404 Client Error: Not Found for url: https://connect.schoolstatus.com/graphql
+2025-05-27 00:29:10,593 - schoolconnect_ai - INFO - Processed announcement 16057394 with 0 documents
+2025-05-27 00:29:10,593 - schoolconnect_ai - INFO - Saving 10 announcements to Airtable
+2025-05-27 00:29:10,891 - schoolconnect_ai - INFO - Created record in Airtable with ID: reclVoD2fuVk53aIM
+2025-05-27 00:29:10,891 - schoolconnect_ai - INFO - Successfully saved announcement 16150174 to Airtable
+2025-05-27 00:29:11,601 - schoolconnect_ai - INFO - Created record in Airtable with ID: recwwZX4o7ga2oYHJ
+2025-05-27 00:29:11,601 - schoolconnect_ai - INFO - Successfully saved announcement 16104318 to Airtable
+2025-05-27 00:29:12,300 - schoolconnect_ai - INFO - Created record in Airtable with ID: recSAxRfFR7lA6piW
+2025-05-27 00:29:12,300 - schoolconnect_ai - INFO - Successfully saved announcement 16097708 to Airtable
+2025-05-27 00:29:12,984 - schoolconnect_ai - INFO - Created record in Airtable with ID: recPz2vHeOmB3HtnU
+2025-05-27 00:29:12,984 - schoolconnect_ai - INFO - Successfully saved announcement 16097547 to Airtable
+2025-05-27 00:29:13,714 - schoolconnect_ai - INFO - Created record in Airtable with ID: rec480EUxKKwLcZp8
+2025-05-27 00:29:13,714 - schoolconnect_ai - INFO - Successfully saved announcement 16097518 to Airtable
+2025-05-27 00:29:14,419 - schoolconnect_ai - INFO - Created record in Airtable with ID: recARWW3VDH0dkVg3
+2025-05-27 00:29:14,419 - schoolconnect_ai - INFO - Successfully saved announcement 16094205 to Airtable
+2025-05-27 00:29:15,124 - schoolconnect_ai - INFO - Created record in Airtable with ID: recz49ukfBz1dyGAh
+2025-05-27 00:29:15,124 - schoolconnect_ai - INFO - Successfully saved announcement 16094046 to Airtable
+2025-05-27 00:29:15,822 - schoolconnect_ai - INFO - Created record in Airtable with ID: recp9pC5xqbrVHQEI
+2025-05-27 00:29:15,823 - schoolconnect_ai - INFO - Successfully saved announcement 16082944 to Airtable
+2025-05-27 00:29:16,493 - schoolconnect_ai - INFO - Created record in Airtable with ID: recfgU1a6FILFOgZ2
+2025-05-27 00:29:16,493 - schoolconnect_ai - INFO - Successfully saved announcement 16082791 to Airtable
+2025-05-27 00:29:17,227 - schoolconnect_ai - INFO - Created record in Airtable with ID: recsZP8qdiYNLUozR
+2025-05-27 00:29:17,227 - schoolconnect_ai - INFO - Successfully saved announcement 16057394 to Airtable
+2025-05-27 00:29:17,727 - schoolconnect_ai - INFO - Successfully saved 10 announcements to Airtable
+INFO:     127.0.0.1:41020 - "GET /api/ingestion/status HTTP/1.1" 200 OK
