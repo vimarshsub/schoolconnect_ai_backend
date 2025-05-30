@@ -11,15 +11,6 @@ from functools import lru_cache
 class Settings(BaseSettings):
     """Application settings loaded from environment variables with defaults."""
     
-    # General settings
-    DEBUG: bool = Field(False, env="DEBUG")
-    LOG_LEVEL: str = Field("INFO", env="LOG_LEVEL")
-    PORT: int = Field(8000, env="PORT")
-    
-    # API settings
-    API_PREFIX: str = Field("/api", env="API_PREFIX")
-    CORS_ORIGINS: List[str] = Field(["*"], env="CORS_ORIGINS")
-    
     # SchoolConnect settings
     SCHOOLCONNECT_USERNAME: str = Field("", env="SCHOOLCONNECT_USERNAME")
     SCHOOLCONNECT_PASSWORD: str = Field("", env="SCHOOLCONNECT_PASSWORD")
@@ -39,6 +30,12 @@ class Settings(BaseSettings):
     
     # Google Calendar settings
     GOOGLE_CALENDAR_CREDENTIALS: Optional[str] = Field(None, env="GOOGLE_CALENDAR_CREDENTIALS")
+    
+    # General settings
+    DEBUG: bool = Field(False, env="DEBUG")
+    PORT: int = Field(8000, env="PORT")
+    API_PREFIX: str = Field("/api", env="API_PREFIX")
+    CORS_ORIGINS: List[str] = Field(["*"], env="CORS_ORIGINS")
     
     # File storage settings
     TEMP_FILE_DIR: str = Field("/tmp/schoolconnect_ai", env="TEMP_FILE_DIR")

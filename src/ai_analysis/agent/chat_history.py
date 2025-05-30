@@ -4,7 +4,7 @@ Chat history management for AI agent conversations.
 
 import logging
 from typing import Dict, List, Tuple, Optional
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain.schema import HumanMessage, AIMessage
 
 logger = logging.getLogger("schoolconnect_ai")
 

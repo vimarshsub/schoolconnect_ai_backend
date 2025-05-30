@@ -5,12 +5,9 @@ Core agent logic for AI-powered announcement analysis.
 import os
 import logging
 from typing import Dict, List, Any, Optional
-from langchain_openai import ChatOpenAI
-from langchain.agents import AgentExecutor
-from langchain.agents.openai_functions_agent.base import create_openai_functions_agent
-from langchain.prompts import MessagesPlaceholder
-from langchain_core.messages import SystemMessage
-from langchain_core.tools import Tool
+from langchain.chat_models import ChatOpenAI
+from langchain.agents import initialize_agent, AgentType
+from langchain.tools import Tool
 
 from src.core.config import get_settings
 from src.ai_analysis.tools.airtable_tool import AirtableTool
@@ -36,13 +33,14 @@ class AgentManager:
         self.openai_analysis_tool = OpenAIDocumentAnalysisTool()
         self.calendar_tool = None
         
-        if settings.GOOGLE_CALENDAR_CREDENTIALS:
+        # Check if Google Calendar credentials exist and are not None or empty
+        if hasattr(settings, 'GOOGLE_CALENDAR_CREDENTIALS') and settings.GOOGLE_CALENDAR_CREDENTIALS:
             self.calendar_tool = GoogleCalendarTool()
         
         # Set up agent
         self.agent_executor = self._setup_agent()
     
-    def _setup_agent(self) -> AgentExecutor:
+    def _setup_agent(self):
         """
         Set up the LangChain agent with tools.
         
@@ -66,12 +64,17 @@ class AgentManager:
             Tool(
                 name="search_announcements",
                 func=self.airtable_tool.search_announcements,
-                description="Search for announcements by text in the Title or Description fields."
+                description="Search for announcements by text in the Title, Description, or Sender fields."
+            ),
+            Tool(
+                name="search_announcements_by_sender",
+                func=self.airtable_tool.search_announcements_by_sender,
+                description="Search for announcements by sender name."
             ),
             Tool(
                 name="filter_announcements_by_date",
                 func=self.airtable_tool.filter_announcements_by_date,
-                description="Filter announcements by date based on the SentTime field. Examples: 'in May', 'last week', '2023-01-01'."
+                description="Filter announcements by date based on the SentTime field. Examples: 'in May', 'last week', 'this month', '2023-01-01'."
             ),
             Tool(
                 name="get_attachment",
@@ -95,43 +98,11 @@ class AgentManager:
                 )
             )
         
-        # Define system message content
-        system_message_content = """You are an AI assistant that helps users manage and analyze announcements and their attachments.
-            
-You can:
-1. Fetch all announcements from the database
-2. Search for specific announcements by text
-3. Filter announcements by date (e.g., "in May", "last week", "2023-01-01")
-4. Get attachments from announcements
-5. Analyze PDF documents (summarize, extract action items, analyze sentiment)
-6. Create calendar events based on document content
-
-When reporting the number of announcements, always use the exact 'count' value provided by the get_all_announcements or filter_announcements_by_date tools.
-
-Always be helpful, clear, and concise in your responses. If you encounter any errors, explain them clearly and suggest alternatives.
-"""
-        
-        # Create agent - using the correct signature for langchain-openai 0.0.5
-        # The system_message is passed as part of the prompt instead
-        from langchain.prompts import ChatPromptTemplate
-        
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", system_message_content),
-            MessagesPlaceholder(variable_name=MEMORY_KEY),
-            ("user", "{input}"),
-            ("user", "{agent_scratchpad}")  # Add the required agent_scratchpad variable
-        ])
-        
-        agent = create_openai_functions_agent(
+        # Create agent using the legacy initialize_agent method
+        agent_executor = initialize_agent(
+            tools=tools,
             llm=llm,
-            tools=tools,
-            prompt=prompt
-        )
-        
-        # Create agent executor
-        agent_executor = AgentExecutor(
-            agent=agent,
-            tools=tools,
+            agent=AgentType.OPENAI_FUNCTIONS,
             verbose=True,
             handle_parsing_errors=True
         )

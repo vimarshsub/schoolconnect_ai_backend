@@ -5,6 +5,7 @@ Airtable tool for AI agent to access and analyze announcements.
 import os
 import requests
 import logging
+<<<<<<< HEAD
 import calendar
 import re
 from datetime import datetime, timedelta
@@ -15,6 +16,12 @@ import dateutil.tz
 from src.storage.airtable.client import AirtableClient
 from src.core.config import get_settings
 from src.utils.date_utils import DateUtils
+=======
+from typing import Dict, List, Optional, Any, Tuple
+
+from src.storage.airtable.client import AirtableClient
+from src.core.config import get_settings
+>>>>>>> 2253f288b9c4533346f3133f2f1128116c5c12c8
 
 logger = logging.getLogger("schoolconnect_ai")
 
@@ -28,21 +35,38 @@ class AirtableTool:
         self.download_dir = os.path.join(self.settings.TEMP_FILE_DIR, "agent_downloads")
         os.makedirs(self.download_dir, exist_ok=True)
     
+<<<<<<< HEAD
     def get_all_announcements(self) -> Dict[str, Any]:
         """
         Fetch all announcements from Airtable.
         
         Returns:
             Dictionary with announcements list and count
+=======
+    def get_all_announcements(self, input_text: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Fetch all announcements from Airtable.
+        
+        Args:
+            input_text: Optional input text (not used, but required for agent tool compatibility)
+            
+        Returns:
+            List of announcement records or error message
+>>>>>>> 2253f288b9c4533346f3133f2f1128116c5c12c8
         """
         if not self.client.airtable:
             error_msg = "Error: Airtable connection not initialized."
             logger.error(error_msg)
+<<<<<<< HEAD
             return {"count": 0, "announcements": [], "error": error_msg}
+=======
+            return error_msg
+>>>>>>> 2253f288b9c4533346f3133f2f1128116c5c12c8
         
         try:
             records = self.client.get_all_records()
             if not records:
+<<<<<<< HEAD
                 return {"count": 0, "announcements": [], "message": "No announcements found."}
             
             announcements = [record["fields"] for record in records if "fields" in record]
@@ -59,6 +83,19 @@ class AirtableTool:
     def search_announcements(self, search_text: str) -> List[Dict[str, Any]]:
         """
         Search announcements by text in Title, Description, or Sender fields.
+=======
+                return "No announcements found."
+            
+            return [record["fields"] for record in records if "fields" in record]
+        except Exception as e:
+            error_msg = f"Error fetching all announcements: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return error_msg
+    
+    def search_announcements(self, search_text: str) -> List[Dict[str, Any]]:
+        """
+        Search announcements by text in Title or Description fields.
+>>>>>>> 2253f288b9c4533346f3133f2f1128116c5c12c8
         
         Args:
             search_text: Text to search for
@@ -72,6 +109,7 @@ class AirtableTool:
             return error_msg
         
         try:
+<<<<<<< HEAD
             # Get all records and filter locally for more flexible searching
             all_records = self.client.get_all_records()
             if not all_records:
@@ -96,11 +134,19 @@ class AirtableTool:
                 return f"No announcements found matching '{search_text}'."
             
             return [record["fields"] for record in matched_records if "fields" in record]
+=======
+            records = self.client.search_records(search_text)
+            if not records:
+                return f"No announcements found matching '{search_text}'."
+            
+            return [record["fields"] for record in records if "fields" in record]
+>>>>>>> 2253f288b9c4533346f3133f2f1128116c5c12c8
         except Exception as e:
             error_msg = f"Error searching announcements for '{search_text}': {str(e)}"
             logger.error(error_msg, exc_info=True)
             return error_msg
     
+<<<<<<< HEAD
     def search_announcements_by_sender(self, sender_name: str) -> Dict[str, Any]:
         """
         Search announcements by sender name.
@@ -380,6 +426,8 @@ class AirtableTool:
             logger.error(f"Error parsing date '{sent_time_str}': {str(e)}", exc_info=True)
             return None
     
+=======
+>>>>>>> 2253f288b9c4533346f3133f2f1128116c5c12c8
     def _get_first_attachment_url(self, record_fields: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
         """
         Helper to get the URL and filename of the first attachment from a record.
