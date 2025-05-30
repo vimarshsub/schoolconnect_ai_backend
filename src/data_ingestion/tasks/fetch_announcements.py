@@ -7,6 +7,8 @@ import time
 import json
 import os
 import base64
+import tempfile
+import requests
 from typing import Dict, List, Optional, Any, Set
 
 from src.core.config import get_settings
@@ -28,6 +30,10 @@ class FetchAnnouncementsTask:
         # Target announcement IDs to specifically debug
         self.target_announcement_ids = {"15992525", "15929951", "15957863"}
         self.target_found = set()
+        
+        # Create temp directory for downloads if it doesn't exist
+        self.temp_dir = os.path.join(tempfile.gettempdir(), "schoolconnect_attachments")
+        os.makedirs(self.temp_dir, exist_ok=True)
     
     def _encode_announcement_id(self, raw_id: str) -> str:
         """
@@ -151,7 +157,7 @@ class FetchAnnouncementsTask:
                     logger.error(f"Error processing target announcement {announcement.get('dbId')}: {str(e)}")
         
         # Save to Airtable
-        saved_count = self._save_to_airtable(processed_announcements)
+        saved_count = self._save_to_airtable(processed_announcements, client)
         
         return {
             "success": True,
@@ -160,12 +166,70 @@ class FetchAnnouncementsTask:
             "target_found": list(self.target_found)
         }
     
-    def _save_to_airtable(self, announcements: List[Dict[str, Any]]) -> int:
+    def _upload_to_airtable(self, file_path: str, filename: str) -> Optional[Dict[str, str]]:
+        """
+        Upload a file to Airtable using their attachment upload API.
+        
+        Args:
+            file_path: Path to the file to upload
+            filename: Name to use for the file in Airtable
+            
+        Returns:
+            Dictionary with attachment info or None if upload failed
+        """
+        try:
+            logger.info(f"Uploading file to Airtable: {file_path}")
+            
+            # Get Airtable API key from settings
+            settings = get_settings()
+            api_key = settings.AIRTABLE_API_KEY
+            base_id = settings.AIRTABLE_BASE_ID
+            table_name = settings.AIRTABLE_TABLE_NAME
+            
+            # Airtable attachment upload endpoint
+            upload_url = f"https://api.airtable.com/v0/upload"
+            
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/octet-stream"
+            }
+            
+            # Read file content
+            with open(file_path, 'rb') as file:
+                file_content = file.read()
+            
+            # Upload file to Airtable
+            response = requests.post(upload_url, headers=headers, data=file_content)
+            response.raise_for_status()
+            
+            # Parse response to get attachment ID
+            upload_data = response.json()
+            
+            if "id" in upload_data:
+                # Create attachment object for Airtable record
+                attachment = {
+                    "id": upload_data["id"],
+                    "url": upload_data.get("url", ""),
+                    "filename": filename
+                }
+                
+                logger.info(f"Successfully uploaded file to Airtable: {filename}")
+                return attachment
+            else:
+                logger.error(f"Failed to upload file to Airtable: {filename}, no ID in response")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error uploading file to Airtable: {str(e)}", exc_info=True)
+            return None
+    
+    def _save_to_airtable(self, announcements: List[Dict[str, Any]], client: SchoolConnectClient) -> int:
         """
         Save announcements to Airtable.
         
         Args:
             announcements: List of processed announcements
+            client: SchoolConnectClient with authenticated session
             
         Returns:
             Number of successfully saved announcements
@@ -236,14 +300,23 @@ class FetchAnnouncementsTask:
                                 url_parts = doc.get("fileUrl", "").split("/")
                                 filename = url_parts[-1] if url_parts else f"document_{len(attachments)}.pdf"
                             
-                            attachment = {
-                                "url": doc.get("fileUrl"),
-                                "filename": filename
-                            }
-                            attachments.append(attachment)
+                            # CRITICAL FIX: Download the document using authenticated session
+                            # This is necessary because the URLs from SchoolConnect API require authentication
+                            downloaded_path = client.download_document(doc.get("fileUrl"), filename)
                             
-                            if is_target_announcement:
-                                logger.info(f"Adding attachment for {announcement_id}: {attachment}")
+                            if downloaded_path:
+                                # CRITICAL FIX: Upload the downloaded file to Airtable
+                                # This is necessary because Airtable needs publicly accessible URLs
+                                attachment = self._upload_to_airtable(downloaded_path, filename)
+                                
+                                if attachment:
+                                    attachments.append(attachment)
+                                    if is_target_announcement:
+                                        logger.info(f"Added attachment for {announcement_id}: {filename} (downloaded and uploaded to Airtable)")
+                                else:
+                                    logger.error(f"Failed to upload attachment to Airtable for {announcement_id}: {filename}")
+                            else:
+                                logger.error(f"Failed to download attachment for {announcement_id}: {doc.get('fileUrl')}")
                 
                 # Prepare record for Airtable
                 record = {

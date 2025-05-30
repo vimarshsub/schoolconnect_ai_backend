@@ -1,55 +1,61 @@
 """
-SchoolConnect API client for authentication and data retrieval.
+SchoolConnect API client for fetching announcements and documents.
 """
 
-import requests
-import json
 import logging
+import time
+import json
 import os
-from typing import Dict, List, Optional, Any
-
-from src.core.config import get_settings
+import tempfile
+import requests
+from typing import Dict, List, Optional, Any, Tuple
 
 logger = logging.getLogger("schoolconnect_ai")
 
 class SchoolConnectClient:
-    """Client for interacting with the SchoolConnect GraphQL API."""
+    """Client for interacting with SchoolConnect API."""
     
-    def __init__(self):
-        """Initialize the SchoolConnect client."""
-        settings = get_settings()
-        self.graphql_url = settings.SCHOOLCONNECT_GRAPHQL_URL
-        self.session = requests.Session()
-        self.headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Origin': 'https://connect.schoolstatus.com',
-            'Referer': 'https://connect.schoolstatus.com/'
-        }
-        self.authenticated = False
+    def __init__(self, session: requests.Session = None):
+        """
+        Initialize the SchoolConnect client.
+        
+        Args:
+            session: Optional requests session to use
+        """
+        self.session = session or requests.Session()
+        self.graphql_url = "https://connect.schoolstatus.com/graphql"
         self.username = None
         self.password = None
+        
+        # Create temp directory for downloads if it doesn't exist
+        self.temp_dir = os.path.join(tempfile.gettempdir(), "schoolconnect_downloads")
+        os.makedirs(self.temp_dir, exist_ok=True)
     
-    def login(self, username: str, password: str) -> bool:
+    def login(self, username: str, password: str) -> Tuple[bool, Optional[str]]:
         """
-        Authenticate with SchoolConnect.
+        Login to SchoolConnect.
         
         Args:
             username: SchoolConnect username
             password: SchoolConnect password
             
         Returns:
-            True if login successful, False otherwise
+            Tuple of (success, error_message)
         """
-        logger.info("Attempting login to SchoolConnect")
-        logger.debug(f"Login attempt with username: {username}")
+        logger.info(f"Logging in to SchoolConnect as {username}")
         
-        # Store credentials for potential re-authentication
+        # Store credentials for re-authentication
         self.username = username
         self.password = password
         
-        # Create login payload - matching exactly what the original backend used
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Origin': 'https://connect.schoolstatus.com',
+            'Referer': 'https://connect.schoolstatus.com/'
+        }
+        
         login_payload = {
             "query": "mutation SessionCreateMutation($input: Session__CreateInput!) { sessionCreate(input: $input) { error location user { id dbId churnZeroId userCredentials { id dbId credential credentialType } } } }",
             "variables": {
@@ -62,69 +68,41 @@ class SchoolConnectClient:
         }
         
         try:
-            logger.debug(f"Sending login request to: {self.graphql_url}")
-            logger.debug(f"Login payload: {json.dumps(login_payload)}")
-            
-            # Send login request
-            login_response = self.session.post(
-                self.graphql_url, 
-                json=login_payload, 
-                headers=self.headers, 
-                timeout=30
-            )
-            
-            logger.debug(f"Login response status code: {login_response.status_code}")
-            
-            # Log cookies - this is critical for session management
-            logger.info(f"Session cookies after login: {self.session.cookies.get_dict()}")
-            
-            # Log the raw response for debugging
-            try:
-                response_text = login_response.text
-                logger.debug(f"Login response body: {response_text[:1000]}")  # Log first 1000 chars to avoid excessive logging
-            except Exception as e:
-                logger.debug(f"Could not log response body: {str(e)}")
-            
+            login_response = self.session.post(self.graphql_url, json=login_payload, headers=headers, timeout=30)
             login_response.raise_for_status()
             login_data = login_response.json()
             
-            # Check for GraphQL errors
-            if login_data.get("errors"):
-                error_message = login_data["errors"][0]["message"]
-                logger.error(f"Login error from GraphQL: {error_message}")
-                return False
+            if login_data.get("errors") or login_data.get("data", {}).get("sessionCreate", {}).get("error"):
+                error_message = login_data.get("errors", [{}])[0].get("message") or login_data.get("data", {}).get("sessionCreate", {}).get("error")
+                logger.error(f"Login failed: {error_message}")
+                return False, error_message
             
-            # Check for error in the sessionCreate response
-            session_create = login_data.get("data", {}).get("sessionCreate", {})
-            if session_create.get("error"):
-                error_message = session_create.get("error")
-                logger.error(f"Login error from sessionCreate: {error_message}")
-                return False
-                
-            if not session_create.get("user"):
-                logger.error("Login failed: No user data in response")
-                return False
-                
-            logger.info("SchoolConnect login successful")
-            self.authenticated = True
-            return True
-            
+            logger.info("Login successful")
+            return True, None
         except Exception as e:
-            logger.error(f"Login error: {str(e)}", exc_info=True)
-            return False
+            logger.error(f"Login failed: {str(e)}", exc_info=True)
+            return False, str(e)
     
     def fetch_paginated_announcements(self, after_cursor: Optional[str] = None, items_per_page: int = 20) -> Dict[str, Any]:
         """
-        Fetch paginated announcements from SchoolConnect.
+        Fetch paginated announcements.
         
         Args:
-            after_cursor: Pagination cursor
+            after_cursor: Cursor for pagination
             items_per_page: Number of items per page
             
         Returns:
-            Dictionary containing announcements, pagination info, and error status
+            Dictionary with announcements, pagination info, and error
         """
-        logger.info(f"Fetching paginated announcements. After cursor: {after_cursor}, Items per page: {items_per_page}")
+        logger.info(f"Fetching paginated announcements (after_cursor: {after_cursor}, items_per_page: {items_per_page})")
+        
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Origin': 'https://connect.schoolstatus.com',
+            'Referer': 'https://connect.schoolstatus.com/'
+        }
         
         announcements_payload = {
             "query": """
@@ -137,8 +115,12 @@ class SchoolConnectClient:
                         node {
                           id
                           dbId
-                          title
-                          message
+                          titleInfo {
+                            origin
+                          }
+                          messageInfo {
+                            origin
+                          }
                           createdAt
                           user {
                             permittedName
@@ -160,35 +142,19 @@ class SchoolConnectClient:
                 "after": after_cursor
             }
         }
-
+        
         try:
-            # Log cookies before request to ensure they're being maintained
-            logger.debug(f"Session cookies before announcements request: {self.session.cookies.get_dict()}")
+            announcements_response = self.session.post(self.graphql_url, json=announcements_payload, headers=headers, timeout=30)
+            announcements_response.raise_for_status()
+            announcements_data = announcements_response.json()
             
-            response = self.session.post(
-                self.graphql_url, 
-                json=announcements_payload, 
-                headers=self.headers, 
-                timeout=30
-            )
+            if "errors" in announcements_data:
+                error_message = announcements_data.get("errors", [{}])[0].get("message", "Unknown GraphQL error")
+                logger.error(f"GraphQL errors: {error_message}")
+                return {"announcements": [], "hasNextPage": False, "endCursor": None, "error": error_message}
             
-            # Log cookies after request
-            logger.debug(f"Session cookies after announcements request: {self.session.cookies.get_dict()}")
-            
-            response.raise_for_status()
-            data = response.json()
-
-            if "errors" in data:
-                logger.error(f"GraphQL errors: {data['errors']}")
-                return {
-                    "announcements": [], 
-                    "hasNextPage": False, 
-                    "endCursor": None, 
-                    "error": data['errors']
-                }
-
             # Process the response
-            viewer_data = data.get("data", {}).get("viewer", {})
+            viewer_data = announcements_data.get("data", {}).get("viewer", {})
             announcements_info = viewer_data.get("announcements", {})
             page_info = announcements_info.get("pageInfo", {})
             
@@ -197,15 +163,16 @@ class SchoolConnectClient:
                 for edge in announcements_info["edges"]:
                     if edge and edge.get("node"):
                         node = edge["node"]
-                        processed_announcements.append({
-                            "id": node.get("id"),  # This is the GraphQL ID already in the correct format
-                            "dbId": node.get("dbId"),  # This is the numeric ID
-                            "title": node.get("title"),
-                            "message": node.get("message"),
+                        announcement = {
+                            "id": node.get("id"),
+                            "dbId": node.get("dbId"),
+                            "title": node.get("titleInfo", {}).get("origin"),
+                            "message": node.get("messageInfo", {}).get("origin"),
                             "createdAt": node.get("createdAt"),
-                            "user": node.get("user", {}),
-                            "documentsCount": node.get("documentsCount", 0)
-                        })
+                            "documentsCount": node.get("documentsCount", 0),
+                            "user": node.get("user", {})
+                        }
+                        processed_announcements.append(announcement)
             
             return {
                 "announcements": processed_announcements,
@@ -213,38 +180,37 @@ class SchoolConnectClient:
                 "endCursor": page_info.get("endCursor"),
                 "error": None
             }
-            
         except Exception as e:
-            logger.error(f"Error fetching announcements: {str(e)}", exc_info=True)
-            return {
-                "announcements": [], 
-                "hasNextPage": False, 
-                "endCursor": None, 
-                "error": str(e)
-            }
+            logger.error(f"Error fetching paginated announcements: {str(e)}", exc_info=True)
+            return {"announcements": [], "hasNextPage": False, "endCursor": None, "error": str(e)}
     
     def fetch_announcement_documents(self, announcement_id: str) -> List[Dict[str, Any]]:
         """
         Fetch documents for a specific announcement.
         
         Args:
-            announcement_id: ID of the announcement (must be the GraphQL ID from pagination, not the numeric dbId)
+            announcement_id: ID of the announcement
             
         Returns:
             List of document dictionaries
         """
         logger.info(f"Fetching documents for announcement {announcement_id}")
         
-        # Re-authenticate before fetching documents to ensure a fresh session
-        # This is the key fix based on the original ClassTagWorkflowApp implementation
+        # Re-authenticate before fetching documents to ensure fresh session
         if self.username and self.password:
             logger.info("Re-authenticating before fetching documents to ensure fresh session")
             self.login(self.username, self.password)
         else:
             logger.warning("Cannot re-authenticate before fetching documents: missing credentials")
         
-        # IMPORTANT: Use the announcement_id directly from pagination results (already in correct format)
-        # Do NOT attempt to encode or modify the ID - this was the source of the 404 errors
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Origin': 'https://connect.schoolstatus.com',
+            'Referer': 'https://connect.schoolstatus.com/'
+        }
+        
         documents_payload = {
             "query": """
                 query AnnouncementDocumentsQuery($id: ID!) {
@@ -261,59 +227,24 @@ class SchoolConnectClient:
                 }
             """,
             "variables": {
-                "id": announcement_id  # Use the ID directly as provided
+                "id": announcement_id
             }
         }
-
+        
         try:
-            # Log cookies before request
-            logger.debug(f"Session cookies before documents request: {self.session.cookies.get_dict()}")
-            
-            # Log the request details for debugging
-            logger.info(f"Sending document fetch request to: {self.graphql_url}")
-            logger.info(f"Document fetch payload: {json.dumps(documents_payload)}")
-            
-            response = self.session.post(
-                self.graphql_url, 
-                json=documents_payload, 
-                headers=self.headers,
-                timeout=30
-            )
-            
-            # Log response details for debugging
-            logger.info(f"Document fetch response status: {response.status_code}")
-            logger.debug(f"Document fetch response headers: {dict(response.headers)}")
-            
-            # Log cookies after request
-            logger.debug(f"Session cookies after documents request: {self.session.cookies.get_dict()}")
-            
-            # Log the raw response for debugging
-            try:
-                response_text = response.text
-                logger.debug(f"Document fetch response body: {response_text[:1000]}")
-            except Exception as e:
-                logger.debug(f"Could not log response body: {str(e)}")
-            
+            response = self.session.post(self.graphql_url, json=documents_payload, headers=headers, timeout=30)
             response.raise_for_status()
             data = response.json()
-
+            
             if "errors" in data:
-                error_message = data["errors"][0]["message"]
-                logger.error(f"GraphQL errors: {error_message}")
+                error_message = data.get("errors", [{}])[0].get("message", "Unknown GraphQL error")
+                logger.error(f"Error fetching documents: {error_message}")
                 return []
-
+            
             documents = data.get("data", {}).get("announcement", {}).get("documents", [])
             logger.info(f"Found {len(documents)} documents for announcement {announcement_id}")
             
-            # Log document details for debugging
-            for idx, doc in enumerate(documents, 1):
-                logger.info(f"Document {idx}:")
-                logger.info(f"  - Filename: {doc.get('fileFilename')}")
-                logger.info(f"  - Type: {doc.get('contentType')}")
-                logger.info(f"  - URL: {doc.get('fileUrl')}")
-            
             return documents
-            
         except Exception as e:
             logger.error(f"Error fetching documents: {str(e)}", exc_info=True)
             return []
@@ -332,31 +263,24 @@ class SchoolConnectClient:
         try:
             logger.info(f"Downloading document from URL: {url}")
             
-            # Log cookies before request
-            logger.debug(f"Session cookies before document download: {self.session.cookies.get_dict()}")
+            # Ensure filename is safe for filesystem
+            safe_filename = "".join([c for c in filename if c.isalnum() or c in "._- "]).rstrip()
+            if not safe_filename:
+                safe_filename = f"document_{int(time.time())}.pdf"
             
+            # Create a unique path for this file
+            file_path = os.path.join(self.temp_dir, safe_filename)
+            
+            # Download the file using the authenticated session
             response = self.session.get(url, timeout=30)
-            
-            # Log cookies after request
-            logger.debug(f"Session cookies after document download: {self.session.cookies.get_dict()}")
-            
             response.raise_for_status()
             
-            # Get the content
-            content = response.content
-            logger.info(f"Successfully downloaded document: {filename}, size: {len(content)} bytes")
+            # Save the file
+            with open(file_path, "wb") as f:
+                f.write(response.content)
             
-            # Create a temporary file
-            settings = get_settings()
-            os.makedirs(settings.TEMP_FILE_DIR, exist_ok=True)
-            temp_file_path = f"{settings.TEMP_FILE_DIR}/{filename}"
-            
-            with open(temp_file_path, "wb") as f:
-                f.write(content)
-            
-            logger.info(f"Saved document to file: {temp_file_path}")
-            return temp_file_path
-            
+            logger.info(f"Successfully downloaded document to: {file_path}")
+            return file_path
         except Exception as e:
             logger.error(f"Error downloading document: {str(e)}", exc_info=True)
             return None
