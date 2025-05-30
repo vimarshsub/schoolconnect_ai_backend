@@ -30,21 +30,57 @@ class AirtableClient:
             logger.error(f"Error initializing Airtable connection: {str(e)}", exc_info=True)
             self.airtable = None
     
+    def check_record_exists(self, announcement_id: str) -> bool:
+        """
+        Check if a record with the given announcement ID already exists in Airtable.
+        
+        Args:
+            announcement_id: The SchoolConnect announcement ID to check
+            
+        Returns:
+            True if a record with this announcement ID exists, False otherwise
+        """
+        if not self.airtable:
+            logger.error("Airtable connection not initialized")
+            return False
+        
+        try:
+            # Use formula to filter by AnnouncementId field
+            formula = f"{{AnnouncementId}} = '{announcement_id}'"
+            matching_records = self.airtable.get_all(formula=formula)
+            
+            exists = len(matching_records) > 0
+            if exists:
+                logger.info(f"Record with AnnouncementId {announcement_id} already exists in Airtable")
+            else:
+                logger.info(f"No existing record found with AnnouncementId {announcement_id}")
+                
+            return exists
+        except Exception as e:
+            logger.error(f"Error checking if record exists in Airtable: {str(e)}", exc_info=True)
+            return False
+    
     def create_record(self, record_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
-        Create a new record in Airtable.
+        Create a new record in Airtable if it doesn't already exist.
         
         Args:
             record_data: Dictionary of field values
             
         Returns:
-            Created record or None if creation failed
+            Created record, existing record ID, or None if creation failed
         """
         if not self.airtable:
             logger.error("Airtable connection not initialized")
             return None
         
         try:
+            # Check if a record with this announcement ID already exists
+            announcement_id = record_data.get("AnnouncementId")
+            if announcement_id and self.check_record_exists(announcement_id):
+                logger.info(f"Skipping creation of duplicate record for announcement {announcement_id}")
+                return {"id": "existing", "fields": {"AnnouncementId": announcement_id}}
+            
             # Check if record_data contains attachments
             if "Attachments" in record_data:
                 logger.info(f"Record contains attachments: {len(record_data['Attachments'])} files")

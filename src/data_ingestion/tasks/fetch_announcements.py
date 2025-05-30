@@ -337,11 +337,14 @@ class FetchAnnouncementsTask:
                 if is_target_announcement:
                     logger.info(f"Airtable record for announcement {announcement_id}: {json.dumps(record)}")
                 
-                # Save to Airtable
+                # Save to Airtable (with duplicate check)
                 result = self.airtable_client.create_record(record)
                 if result:
-                    success_count += 1
-                    logger.info(f"Successfully saved announcement {announcement['dbId']} to Airtable")
+                    if result.get("id") == "existing":
+                        logger.info(f"Skipped duplicate announcement {announcement['dbId']} in Airtable")
+                    else:
+                        success_count += 1
+                        logger.info(f"Successfully saved announcement {announcement['dbId']} to Airtable")
                     
                     # Debug log for target announcement
                     if is_target_announcement:
