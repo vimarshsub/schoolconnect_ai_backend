@@ -2,19 +2,21 @@
 API routes for data ingestion operations.
 """
 
+import os
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 
 from src.api.routes.auth import get_current_user
 from src.data_ingestion.tasks.fetch_announcements import FetchAnnouncementsTask
+from src.core.config import get_settings
 
 router = APIRouter()
 
 class SyncRequest(BaseModel):
     """Request model for data synchronization."""
-    username: str
-    password: str
+    username: Optional[str] = None
+    password: Optional[str] = None
     max_pages: Optional[int] = 5
 
 class SyncResponse(BaseModel):
@@ -40,6 +42,9 @@ async def sync_data(
 ):
     """
     Manually trigger data synchronization from SchoolConnect to Airtable.
+    
+    If username and password are not provided in the request, the system will use
+    the credentials from environment variables (SCHOOLCONNECT_USERNAME and SCHOOLCONNECT_PASSWORD).
     """
     if last_sync_status["in_progress"]:
         return SyncResponse(
@@ -48,11 +53,26 @@ async def sync_data(
             details={"status": "in_progress"}
         )
     
+    # Get settings for credentials if not provided in request
+    settings = get_settings()
+    
+    # Use credentials from request if provided, otherwise use from environment
+    username = request.username if request.username else settings.SCHOOLCONNECT_USERNAME
+    password = request.password if request.password else settings.SCHOOLCONNECT_PASSWORD
+    
+    # Validate credentials
+    if not username or not password:
+        return SyncResponse(
+            success=False,
+            message="SchoolConnect credentials not provided in request or environment variables",
+            details={"status": "error", "error": "missing_credentials"}
+        )
+    
     # Start sync in background
     background_tasks.add_task(
         run_sync_task,
-        request.username,
-        request.password,
+        username,
+        password,
         request.max_pages
     )
     
