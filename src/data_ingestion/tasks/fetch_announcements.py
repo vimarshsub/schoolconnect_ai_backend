@@ -166,62 +166,31 @@ class FetchAnnouncementsTask:
             "target_found": list(self.target_found)
         }
     
-    def _upload_to_airtable(self, file_path: str, filename: str) -> Optional[Dict[str, str]]:
+    def _download_document(self, client: SchoolConnectClient, url: str, filename: str) -> bool:
         """
-        Upload a file to Airtable using their attachment upload API.
+        Download a document using the authenticated session to verify it exists.
         
         Args:
-            file_path: Path to the file to upload
-            filename: Name to use for the file in Airtable
+            client: SchoolConnectClient with authenticated session
+            url: URL of the document
+            filename: Name of the document
             
         Returns:
-            Dictionary with attachment info or None if upload failed
+            True if download was successful, False otherwise
         """
         try:
-            logger.info(f"Uploading file to Airtable: {file_path}")
+            logger.info(f"Verifying document accessibility: {url}")
             
-            # Get Airtable API key from settings
-            settings = get_settings()
-            api_key = settings.AIRTABLE_API_KEY
-            base_id = settings.AIRTABLE_BASE_ID
-            table_name = settings.AIRTABLE_TABLE_NAME
-            
-            # Airtable attachment upload endpoint
-            upload_url = f"https://api.airtable.com/v0/upload"
-            
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/octet-stream"
-            }
-            
-            # Read file content
-            with open(file_path, 'rb') as file:
-                file_content = file.read()
-            
-            # Upload file to Airtable
-            response = requests.post(upload_url, headers=headers, data=file_content)
+            # Use the client's session to download the file (just to verify it exists)
+            response = client.session.get(url, timeout=30)
             response.raise_for_status()
             
-            # Parse response to get attachment ID
-            upload_data = response.json()
-            
-            if "id" in upload_data:
-                # Create attachment object for Airtable record
-                attachment = {
-                    "id": upload_data["id"],
-                    "url": upload_data.get("url", ""),
-                    "filename": filename
-                }
-                
-                logger.info(f"Successfully uploaded file to Airtable: {filename}")
-                return attachment
-            else:
-                logger.error(f"Failed to upload file to Airtable: {filename}, no ID in response")
-                return None
-                
+            # If we got here, the file is accessible
+            logger.info(f"Successfully verified document accessibility: {filename}, size: {len(response.content)} bytes")
+            return True
         except Exception as e:
-            logger.error(f"Error uploading file to Airtable: {str(e)}", exc_info=True)
-            return None
+            logger.error(f"Error verifying document accessibility: {str(e)}", exc_info=True)
+            return False
     
     def _save_to_airtable(self, announcements: List[Dict[str, Any]], client: SchoolConnectClient) -> int:
         """
@@ -292,7 +261,7 @@ class FetchAnnouncementsTask:
                         logger.info(f"PDF documents found for announcement {announcement_id}: {len(pdf_docs)}")
                     
                     for doc in docs_to_process:
-                        if doc.get("fileUrl"):
+                        if doc.get("fileUrl") and doc.get("fileFilename"):
                             # Ensure filename exists, create one if missing
                             filename = doc.get("fileFilename")
                             if not filename:
@@ -300,23 +269,22 @@ class FetchAnnouncementsTask:
                                 url_parts = doc.get("fileUrl", "").split("/")
                                 filename = url_parts[-1] if url_parts else f"document_{len(attachments)}.pdf"
                             
-                            # CRITICAL FIX: Download the document using authenticated session
-                            # This is necessary because the URLs from SchoolConnect API require authentication
-                            downloaded_path = client.download_document(doc.get("fileUrl"), filename)
+                            # Verify document accessibility by downloading it with authenticated session
+                            # This matches the original ClassTagWorkflowApp approach
+                            is_accessible = self._download_document(client, doc.get("fileUrl"), filename)
                             
-                            if downloaded_path:
-                                # CRITICAL FIX: Upload the downloaded file to Airtable
-                                # This is necessary because Airtable needs publicly accessible URLs
-                                attachment = self._upload_to_airtable(downloaded_path, filename)
+                            if is_accessible:
+                                # Use direct URL format for Airtable attachments
+                                # This matches the original ClassTagWorkflowApp approach
+                                attachments.append({
+                                    "url": doc.get("fileUrl"),
+                                    "filename": filename
+                                })
                                 
-                                if attachment:
-                                    attachments.append(attachment)
-                                    if is_target_announcement:
-                                        logger.info(f"Added attachment for {announcement_id}: {filename} (downloaded and uploaded to Airtable)")
-                                else:
-                                    logger.error(f"Failed to upload attachment to Airtable for {announcement_id}: {filename}")
+                                if is_target_announcement:
+                                    logger.info(f"Added attachment for {announcement_id}: {filename} with URL: {doc.get('fileUrl')}")
                             else:
-                                logger.error(f"Failed to download attachment for {announcement_id}: {doc.get('fileUrl')}")
+                                logger.error(f"Document not accessible for {announcement_id}: {doc.get('fileUrl')}")
                 
                 # Prepare record for Airtable
                 record = {
