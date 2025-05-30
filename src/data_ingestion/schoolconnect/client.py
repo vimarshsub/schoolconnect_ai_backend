@@ -28,6 +28,8 @@ class SchoolConnectClient:
             'Referer': 'https://connect.schoolstatus.com/'
         }
         self.authenticated = False
+        self.username = None
+        self.password = None
     
     def login(self, username: str, password: str) -> bool:
         """
@@ -42,6 +44,10 @@ class SchoolConnectClient:
         """
         logger.info("Attempting login to SchoolConnect")
         logger.debug(f"Login attempt with username: {username}")
+        
+        # Store credentials for potential re-authentication
+        self.username = username
+        self.password = password
         
         # Create login payload - matching exactly what the original backend used
         login_payload = {
@@ -229,6 +235,14 @@ class SchoolConnectClient:
         """
         logger.info(f"Fetching documents for announcement {announcement_id}")
         
+        # Re-authenticate before fetching documents to ensure a fresh session
+        # This is the key fix based on the original ClassTagWorkflowApp implementation
+        if self.username and self.password:
+            logger.info("Re-authenticating before fetching documents to ensure fresh session")
+            self.login(self.username, self.password)
+        else:
+            logger.warning("Cannot re-authenticate before fetching documents: missing credentials")
+        
         documents_payload = {
             "query": """
                 query AnnouncementDocumentsQuery($id: ID!) {
@@ -253,6 +267,10 @@ class SchoolConnectClient:
             # Log cookies before request
             logger.debug(f"Session cookies before documents request: {self.session.cookies.get_dict()}")
             
+            # Log the request details for debugging
+            logger.info(f"Sending document fetch request to: {self.graphql_url}")
+            logger.info(f"Document fetch payload: {json.dumps(documents_payload)}")
+            
             response = self.session.post(
                 self.graphql_url, 
                 json=documents_payload, 
@@ -260,8 +278,19 @@ class SchoolConnectClient:
                 timeout=30
             )
             
+            # Log response details for debugging
+            logger.info(f"Document fetch response status: {response.status_code}")
+            logger.debug(f"Document fetch response headers: {dict(response.headers)}")
+            
             # Log cookies after request
             logger.debug(f"Session cookies after documents request: {self.session.cookies.get_dict()}")
+            
+            # Log the raw response for debugging
+            try:
+                response_text = response.text
+                logger.debug(f"Document fetch response body: {response_text[:1000]}")
+            except Exception as e:
+                logger.debug(f"Could not log response body: {str(e)}")
             
             response.raise_for_status()
             data = response.json()
@@ -273,6 +302,13 @@ class SchoolConnectClient:
 
             documents = data.get("data", {}).get("announcement", {}).get("documents", [])
             logger.info(f"Found {len(documents)} documents for announcement {announcement_id}")
+            
+            # Log document details for debugging
+            for idx, doc in enumerate(documents, 1):
+                logger.info(f"Document {idx}:")
+                logger.info(f"  - Filename: {doc.get('fileFilename')}")
+                logger.info(f"  - Type: {doc.get('contentType')}")
+                logger.info(f"  - URL: {doc.get('fileUrl')}")
             
             return documents
             
