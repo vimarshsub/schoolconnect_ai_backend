@@ -46,26 +46,9 @@ class FetchAnnouncementsTask:
         # Target announcement IDs to specifically debug
         self.target_announcement_ids = {"15992525", "15929951", "15957863"}
         self.target_found = set()
-        
-        # Create temp directory for downloads if it doesn't exist
-        self.temp_dir = os.path.join(tempfile.gettempdir(), "schoolconnect_attachments")
-        os.makedirs(self.temp_dir, exist_ok=True)
     
-    def _encode_announcement_id(self, raw_id: str) -> str:
-        """
-        Encode a raw announcement ID into the format expected by SchoolConnect GraphQL API.
-        
-        Args:
-            raw_id: Raw announcement ID (numeric string)
-            
-        Returns:
-            Base64 encoded ID in the format expected by the API
-        """
-        # Format: Base64("Announcement-" + raw_id)
-        id_string = f"Announcement-{raw_id}"
-        encoded_id = base64.b64encode(id_string.encode()).decode()
-        logger.info(f"Encoded announcement ID: {raw_id} -> {encoded_id}")
-        return encoded_id
+    # The _encode_announcement_id method has been removed as it's no longer used.
+    # The current implementation uses dbId directly with the format "Announcement:{dbId}"
     
     def execute(self, username: str, password: str, max_pages: int = 20) -> Dict[str, Any]:
         """

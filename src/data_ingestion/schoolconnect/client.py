@@ -26,10 +26,6 @@ class SchoolConnectClient:
         self.graphql_url = "https://connect.schoolstatus.com/graphql"
         self.username = None
         self.password = None
-        
-        # Create temp directory for downloads if it doesn't exist
-        self.temp_dir = os.path.join(tempfile.gettempdir(), "schoolconnect_downloads")
-        os.makedirs(self.temp_dir, exist_ok=True)
     
     def login(self, username: str, password: str) -> Tuple[bool, Optional[str]]:
         """
@@ -249,38 +245,5 @@ class SchoolConnectClient:
             logger.error(f"Error fetching documents: {str(e)}", exc_info=True)
             return []
     
-    def download_document(self, url: str, filename: str) -> Optional[str]:
-        """
-        Download a document using the authenticated session.
-        
-        Args:
-            url: URL of the document
-            filename: Filename to save as
-            
-        Returns:
-            Path to the downloaded file or None if download failed
-        """
-        try:
-            logger.info(f"Downloading document from URL: {url}")
-            
-            # Ensure filename is safe for filesystem
-            safe_filename = "".join([c for c in filename if c.isalnum() or c in "._- "]).rstrip()
-            if not safe_filename:
-                safe_filename = f"document_{int(time.time())}.pdf"
-            
-            # Create a unique path for this file
-            file_path = os.path.join(self.temp_dir, safe_filename)
-            
-            # Download the file using the authenticated session
-            response = self.session.get(url, timeout=30)
-            response.raise_for_status()
-            
-            # Save the file
-            with open(file_path, "wb") as f:
-                f.write(response.content)
-            
-            logger.info(f"Successfully downloaded document to: {file_path}")
-            return file_path
-        except Exception as e:
-            logger.error(f"Error downloading document: {str(e)}", exc_info=True)
-            return None
+    # The download_document method has been removed as it's not used in the document processing flow.
+    # The system uses _download_document in FetchAnnouncementsTask which only verifies accessibility.
