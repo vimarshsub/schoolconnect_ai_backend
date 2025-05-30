@@ -1,5 +1,26 @@
 """
 SchoolConnect API client for fetching announcements and documents.
+
+This module provides a client for interacting with the SchoolConnect API, 
+specifically for fetching announcements and their associated documents.
+
+Document Handling Flow:
+1. Authentication: The client authenticates with SchoolConnect using username/password
+2. Announcement Fetching: Paginated announcements are retrieved from the API
+3. Document Fetching: For each announcement, documents are fetched using the announcement's dbId
+   - The dbId must be formatted as "Announcement:{dbId}" in the GraphQL query
+   - Re-authentication occurs before each document fetch to ensure a valid session
+4. Document Processing: Documents are filtered (in fetch_announcements.py) to include only PDFs
+   - PDFs are identified by content type, filename extension, or URL extension
+   - Images and other non-PDF files are explicitly excluded
+5. Attachment Creation: Document URLs are used directly in Airtable attachments
+   - The system verifies document accessibility by attempting to download each file
+   - Only accessible documents are included as attachments
+
+Important Notes:
+- The SchoolConnect API requires re-authentication before document fetching to maintain a valid session
+- The correct ID format for document fetching is critical (Announcement:{dbId})
+- Document URLs from SchoolConnect are directly usable by Airtable without re-uploading
 """
 
 import logging
