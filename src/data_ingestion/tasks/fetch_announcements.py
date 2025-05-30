@@ -133,10 +133,13 @@ class FetchAnnouncementsTask:
                     logger.info(f"Processing target announcement {announcement_id}: {announcement.get('title')}")
                 
                 # Fetch documents for this announcement
-                # IMPORTANT: Use the 'id' field directly from pagination results
-                # This is the GraphQL ID already in the correct format
-                documents = client.fetch_announcement_documents(announcement["id"])
+                # IMPORTANT: Use the 'dbId' field as in the original ClassTagWorkflowApp
+                # This is the numeric ID that needs to be formatted as "Announcement:dbId"
+                documents = client.fetch_announcement_documents(announcement["dbId"])
                 announcement["documents"] = documents
+                
+                # Log document URLs for debugging
+                logger.info(f"Document URLs for announcement {announcement.get('dbId')}: {[doc.get('fileUrl') for doc in documents]}")
                 
                 # Debug log for target announcement
                 if is_target_announcement:
