@@ -1,5 +1,21 @@
 """
 Task for fetching announcements from SchoolConnect and storing them in Airtable.
+
+Document Handling Flow:
+1. Authentication: The system authenticates with SchoolConnect
+2. Announcement Fetching: Paginated announcements are retrieved from the API
+3. Document Fetching: For each announcement, documents are fetched using the announcement's dbId
+4. PDF Filtering: Documents are filtered to include only PDFs (excluding images)
+   - PDFs are identified by content type, filename extension, or URL extension
+   - Images and other non-PDF files are explicitly excluded
+5. Attachment Creation: Document URLs are used directly in Airtable attachments
+   - The system verifies document accessibility by attempting to download each file
+   - Only accessible documents are included as attachments
+
+Important Notes:
+- The SchoolConnect API requires re-authentication before document fetching
+- Only PDF documents are included as attachments (images are excluded)
+- Document URLs from SchoolConnect are directly usable by Airtable
 """
 
 import logging
@@ -35,15 +51,20 @@ class FetchAnnouncementsTask:
         self.temp_dir = os.path.join(tempfile.gettempdir(), "schoolconnect_attachments")
         os.makedirs(self.temp_dir, exist_ok=True)
     
+    # This method is no longer used since we directly use dbId with "Announcement:{dbId}" format
+    # Keeping this as a reference for future developers who might need to encode IDs
     def _encode_announcement_id(self, raw_id: str) -> str:
         """
-        Encode a raw announcement ID into the format expected by SchoolConnect GraphQL API.
+        Encode a raw announcement ID into the Base64 format.
+        
+        Note: This method is not currently used in the document fetching flow.
+        The correct format for document fetching is "Announcement:{dbId}" (not Base64 encoded).
         
         Args:
             raw_id: Raw announcement ID (numeric string)
             
         Returns:
-            Base64 encoded ID in the format expected by the API
+            Base64 encoded ID
         """
         # Format: Base64("Announcement-" + raw_id)
         id_string = f"Announcement-{raw_id}"
@@ -231,30 +252,42 @@ class FetchAnnouncementsTask:
                         ]
                         logger.info(f"Document types for announcement {announcement_id}: {doc_types}")
                     
-                    # Enhanced PDF detection logic - more inclusive
+                    # Strict PDF detection logic - only include actual PDFs, exclude images
                     pdf_docs = []
                     for doc in announcement.get("documents", []):
                         is_pdf = False
-                        # Check content type
+                        # Check content type - primary method
                         if doc.get("contentType") == "application/pdf":
                             is_pdf = True
                             if is_target_announcement:
                                 logger.info(f"PDF detected by content type for {announcement_id}: {doc.get('contentType')}")
-                        # Check filename extension
+                        # Check filename extension - secondary method
                         elif doc.get("fileFilename") and doc.get("fileFilename").lower().endswith('.pdf'):
                             is_pdf = True
                             if is_target_announcement:
                                 logger.info(f"PDF detected by filename for {announcement_id}: {doc.get('fileFilename')}")
-                        # Check URL extension as fallback
+                        # Check URL extension - tertiary method
                         elif doc.get("fileUrl") and doc.get("fileUrl").lower().endswith('.pdf'):
                             is_pdf = True
                             if is_target_announcement:
                                 logger.info(f"PDF detected by URL for {announcement_id}: {doc.get('fileUrl')}")
-                        # If still not detected as PDF but has a URL and filename, try as PDF anyway
-                        elif doc.get("fileUrl") and doc.get("fileFilename"):
-                            is_pdf = True
-                            if is_target_announcement:
-                                logger.info(f"Treating as PDF despite no indicators for {announcement_id}: {doc.get('fileFilename')}")
+                        
+                        # Explicitly exclude image files by checking content type and extensions
+                        if is_pdf and doc.get("contentType"):
+                            if "image/" in doc.get("contentType").lower():
+                                is_pdf = False
+                                if is_target_announcement:
+                                    logger.info(f"Excluding image by content type: {doc.get('contentType')}")
+                        
+                        # Exclude by filename extension if it's an image format
+                        if is_pdf and doc.get("fileFilename"):
+                            image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp']
+                            for ext in image_extensions:
+                                if doc.get("fileFilename").lower().endswith(ext):
+                                    is_pdf = False
+                                    if is_target_announcement:
+                                        logger.info(f"Excluding image by filename extension: {doc.get('fileFilename')}")
+                                    break
                             
                         if is_pdf:
                             pdf_docs.append(doc)
