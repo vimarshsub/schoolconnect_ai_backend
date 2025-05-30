@@ -73,7 +73,9 @@ class SchoolConnectClient:
                 logger.error(f"Login failed: {error_message}")
                 return False, error_message
             
+            # Log session cookies after successful login
             logger.info("Login successful")
+            logger.info(f"Session cookies after login: {dict(self.session.cookies)}")
             return True, None
         except Exception as e:
             logger.error(f"Login failed: {str(e)}", exc_info=True)
@@ -140,6 +142,9 @@ class SchoolConnectClient:
         }
         
         try:
+            # Log session cookies before making the request
+            logger.info(f"Session cookies before fetching announcements: {dict(self.session.cookies)}")
+            
             announcements_response = self.session.post(self.graphql_url, json=announcements_payload, headers=headers, timeout=30)
             announcements_response.raise_for_status()
             announcements_data = announcements_response.json()
@@ -207,6 +212,9 @@ class SchoolConnectClient:
             'Referer': 'https://connect.schoolstatus.com/'
         }
         
+        # Format the ID as "Announcement:{announcement_id}" as in the working version
+        formatted_id = f"Announcement:{announcement_id}"
+        
         documents_payload = {
             "query": """
                 query AnnouncementDocumentsQuery($id: ID!) {
@@ -223,12 +231,25 @@ class SchoolConnectClient:
                 }
             """,
             "variables": {
-                "id": announcement_id
+                "id": formatted_id
             }
         }
         
+        # Log the exact ID format being used
+        logger.info(f"Using ID format for document query: {formatted_id}")
+        
+        # Log session cookies and headers before making the document fetch request
+        logger.info(f"Session cookies before document fetch: {dict(self.session.cookies)}")
+        logger.info(f"Request headers for document fetch: {headers}")
+        logger.info(f"Document query payload: {json.dumps(documents_payload)}")
+        
         try:
             response = self.session.post(self.graphql_url, json=documents_payload, headers=headers, timeout=30)
+            
+            # Log response status and headers
+            logger.info(f"Document fetch response status: {response.status_code}")
+            logger.info(f"Document fetch response headers: {dict(response.headers)}")
+            
             response.raise_for_status()
             data = response.json()
             
@@ -240,9 +261,15 @@ class SchoolConnectClient:
             documents = data.get("data", {}).get("announcement", {}).get("documents", [])
             logger.info(f"Found {len(documents)} documents for announcement {announcement_id}")
             
+            # Log document details for debugging
+            for i, doc in enumerate(documents):
+                logger.info(f"Document {i+1}: filename={doc.get('fileFilename')}, contentType={doc.get('contentType')}, URL={doc.get('fileUrl')}")
+            
             return documents
         except Exception as e:
             logger.error(f"Error fetching documents: {str(e)}", exc_info=True)
+            # Log the full exception details for debugging
+            logger.error(f"Full exception details: {repr(e)}")
             return []
     
     # The download_document method has been removed as it's not used in the document processing flow.
