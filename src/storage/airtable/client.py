@@ -49,10 +49,13 @@ class AirtableClient:
             if "Attachments" in record_data:
                 logger.info(f"Record contains attachments: {len(record_data['Attachments'])} files")
                 
-                # Ensure record is properly formatted for Airtable with fields wrapper
-                # This is critical for attachments to work correctly
-                formatted_record = {"fields": record_data}
-                result = self.airtable.insert(formatted_record["fields"])
+                # Log attachment details for debugging
+                for i, attachment in enumerate(record_data['Attachments']):
+                    logger.info(f"Attachment {i+1}: url={attachment.get('url')}, filename={attachment.get('filename')}")
+                
+                # FIX: Do NOT wrap in fields - the Airtable library handles this automatically
+                # Just pass the record_data directly to insert
+                result = self.airtable.insert(record_data)
             else:
                 # For records without attachments, use the standard approach
                 result = self.airtable.insert(record_data)
