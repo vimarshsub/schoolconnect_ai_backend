@@ -10,6 +10,36 @@ The SchoolConnect-AI Backend provides a comprehensive solution for:
 2. **AI Analysis**: Analyzing documents using OpenAI's GPT-4o vision capabilities and providing a conversational interface
 3. **Unified API**: A single API that handles both data ingestion and AI analysis operations
 
+## Critical Components
+
+### Document Fetching
+
+The document fetching functionality is sensitive to specific implementation details:
+
+- **ID Formatting**: Documents must be fetched using the format `Announcement:{dbId}` where dbId is the numeric database ID
+- **Session Handling**: Session cookies must be preserved between requests
+- **Authentication Flow**: The authentication state must be maintained throughout the process
+
+For detailed information, see [SchoolConnect API Integration Guide](docs/SchoolConnect_API_Integration.md).
+
+## Troubleshooting
+
+Common issues and their solutions:
+
+1. **404 Errors When Fetching Documents**:
+   - Verify the announcement ID is formatted correctly as `Announcement:{dbId}`
+   - Ensure session cookies are preserved between requests
+   - Check that authentication is successful and session is maintained
+
+2. **Missing PDF Attachments**:
+   - Verify document content type filtering is working correctly
+   - Check Airtable API integration for attachment creation
+   - Confirm document URLs are accessible
+
+3. **Duplicate Announcements**:
+   - The system checks for existing records before creation
+   - Verify the duplicate detection logic is working correctly
+
 ## Architecture
 
 The backend follows a modular architecture with clear separation of concerns:
@@ -132,22 +162,16 @@ The server will be available at `http://localhost:8000`.
 #### Health Check
 - `GET /health`: Check the health of the backend service
 
-## Deployment
-
-### Koyeb Deployment
-
-This backend is designed to be deployed on Koyeb. The repository includes a `koyeb.yaml` file for configuration.
-
-To deploy:
-
-1. Install the Koyeb CLI
-2. Login to your Koyeb account
-3. Run:
-```bash
-koyeb app deploy --name schoolconnect-ai-backend --port 8000 --env-file .env
-```
-
 ## Development
+
+### Best Practices
+
+When working with the SchoolConnect API integration:
+
+1. **Make Incremental Changes**: Any modifications to the document fetching or authentication flow should be done incrementally with testing after each change
+2. **Preserve Session State**: Ensure session cookies are maintained between requests
+3. **Verify ID Formatting**: Always use the correct ID format for document fetching
+4. **Test Document Flow**: Always test the full flow from authentication to document fetching after changes
 
 ### Project Structure
 

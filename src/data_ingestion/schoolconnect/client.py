@@ -1,5 +1,11 @@
 """
 SchoolConnect API client for fetching announcements and documents.
+
+This client handles authentication, announcement fetching, and document retrieval
+from the SchoolConnect API. It maintains session state for API interactions.
+
+IMPORTANT: The document fetching functionality is sensitive to ID formatting and session handling.
+           See docs/SchoolConnect_API_Integration.md for detailed information.
 """
 
 import logging
@@ -20,7 +26,8 @@ class SchoolConnectClient:
         Initialize the SchoolConnect client.
         
         Args:
-            session: Optional requests session to use
+            session: Optional requests session to use. A persistent session is critical
+                    for maintaining authentication state between requests.
         """
         self.session = session or requests.Session()
         self.graphql_url = "https://connect.schoolstatus.com/graphql"
@@ -30,6 +37,9 @@ class SchoolConnectClient:
     def login(self, username: str, password: str) -> Tuple[bool, Optional[str]]:
         """
         Login to SchoolConnect.
+        
+        This method authenticates with the SchoolConnect API and establishes a session.
+        The session cookies must be preserved for subsequent requests.
         
         Args:
             username: SchoolConnect username
@@ -82,6 +92,10 @@ class SchoolConnectClient:
     def fetch_paginated_announcements(self, after_cursor: Optional[str] = None, items_per_page: int = 20) -> Dict[str, Any]:
         """
         Fetch paginated announcements.
+        
+        This method retrieves a page of announcements from the SchoolConnect API.
+        Each announcement contains both a GraphQL ID and a database ID (dbId).
+        The dbId is required for document fetching.
         
         Args:
             after_cursor: Cursor for pagination
@@ -184,8 +198,17 @@ class SchoolConnectClient:
         """
         Fetch documents for a specific announcement.
         
+        CRITICAL: This method requires specific ID formatting and session handling.
+        The announcement_id must be formatted as "Announcement:{dbId}" where dbId
+        is the numeric database ID from the announcement object.
+        
+        Example: "Announcement:15992525"
+        
+        The session must maintain authentication state from previous requests.
+        Re-authentication before document fetching can reset cookies and cause 404 errors.
+        
         Args:
-            announcement_id: ID of the announcement
+            announcement_id: ID of the announcement in format "Announcement:{dbId}"
             
         Returns:
             List of document dictionaries
@@ -207,6 +230,8 @@ class SchoolConnectClient:
             'Referer': 'https://connect.schoolstatus.com/'
         }
         
+        # The ID format must be "Announcement:{dbId}" for the API to work correctly
+        # Using the wrong ID format will result in 404 errors
         documents_payload = {
             "query": """
                 query AnnouncementDocumentsQuery($id: ID!) {
