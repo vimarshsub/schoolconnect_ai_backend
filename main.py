@@ -26,13 +26,26 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Add CORS middleware
+# Add CORS middleware with more permissive defaults
 cors_origins = os.getenv("CORS_ORIGINS", "[]")
 try:
     import json
     origins = json.loads(cors_origins)
-except:
+    logger.info(f"Configured CORS origins: {origins}")
+    if not origins:  # If empty list, use wildcard
+        logger.warning("No CORS origins specified, defaulting to allow all origins")
+        origins = ["*"]
+except Exception as e:
+    logger.warning(f"Error parsing CORS_ORIGINS, defaulting to allow all origins: {str(e)}")
     origins = ["*"]
+
+# Always include Lovable domain explicitly
+lovable_domain = "https://d542924f-201b-48c7-b9de-4b6f2cdb8ab2.lovableproject.com"
+if lovable_domain not in origins and "*" not in origins:
+    origins.append(lovable_domain)
+    logger.info(f"Added Lovable domain to CORS origins: {lovable_domain}")
+
+logger.info(f"Final CORS origins: {origins}")
 
 app.add_middleware(
     CORSMiddleware,
