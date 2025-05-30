@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     
     # OpenAI settings
     OPENAI_API_KEY: str = Field("", env="OPENAI_API_KEY")
-    OPENAI_MODEL: str = Field("gpt-4o", env="OPENAI_MODEL")
+    OPENAI_MODEL: str = Field("gpt-4o-mini", env="OPENAI_MODEL")  # Changed from gpt-4o to gpt-4o-mini based on testing
     
     # Google Calendar settings
     GOOGLE_CALENDAR_CREDENTIALS: Optional[str] = Field(None, env="GOOGLE_CALENDAR_CREDENTIALS")
