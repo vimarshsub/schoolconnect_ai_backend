@@ -5,7 +5,6 @@ Airtable tool for AI agent to access and analyze announcements.
 import os
 import requests
 import logging
-<<<<<<< HEAD
 import calendar
 import re
 from datetime import datetime, timedelta
@@ -16,12 +15,6 @@ import dateutil.tz
 from src.storage.airtable.client import AirtableClient
 from src.core.config import get_settings
 from src.utils.date_utils import DateUtils
-=======
-from typing import Dict, List, Optional, Any, Tuple
-
-from src.storage.airtable.client import AirtableClient
-from src.core.config import get_settings
->>>>>>> 2253f288b9c4533346f3133f2f1128116c5c12c8
 
 logger = logging.getLogger("schoolconnect_ai")
 
@@ -35,38 +28,21 @@ class AirtableTool:
         self.download_dir = os.path.join(self.settings.TEMP_FILE_DIR, "agent_downloads")
         os.makedirs(self.download_dir, exist_ok=True)
     
-<<<<<<< HEAD
     def get_all_announcements(self) -> Dict[str, Any]:
         """
         Fetch all announcements from Airtable.
         
         Returns:
             Dictionary with announcements list and count
-=======
-    def get_all_announcements(self, input_text: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        Fetch all announcements from Airtable.
-        
-        Args:
-            input_text: Optional input text (not used, but required for agent tool compatibility)
-            
-        Returns:
-            List of announcement records or error message
->>>>>>> 2253f288b9c4533346f3133f2f1128116c5c12c8
         """
         if not self.client.airtable:
             error_msg = "Error: Airtable connection not initialized."
             logger.error(error_msg)
-<<<<<<< HEAD
             return {"count": 0, "announcements": [], "error": error_msg}
-=======
-            return error_msg
->>>>>>> 2253f288b9c4533346f3133f2f1128116c5c12c8
         
         try:
             records = self.client.get_all_records()
             if not records:
-<<<<<<< HEAD
                 return {"count": 0, "announcements": [], "message": "No announcements found."}
             
             announcements = [record["fields"] for record in records if "fields" in record]
@@ -83,19 +59,6 @@ class AirtableTool:
     def search_announcements(self, search_text: str) -> List[Dict[str, Any]]:
         """
         Search announcements by text in Title, Description, or Sender fields.
-=======
-                return "No announcements found."
-            
-            return [record["fields"] for record in records if "fields" in record]
-        except Exception as e:
-            error_msg = f"Error fetching all announcements: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            return error_msg
-    
-    def search_announcements(self, search_text: str) -> List[Dict[str, Any]]:
-        """
-        Search announcements by text in Title or Description fields.
->>>>>>> 2253f288b9c4533346f3133f2f1128116c5c12c8
         
         Args:
             search_text: Text to search for
@@ -109,7 +72,6 @@ class AirtableTool:
             return error_msg
         
         try:
-<<<<<<< HEAD
             # Get all records and filter locally for more flexible searching
             all_records = self.client.get_all_records()
             if not all_records:
@@ -134,19 +96,11 @@ class AirtableTool:
                 return f"No announcements found matching '{search_text}'."
             
             return [record["fields"] for record in matched_records if "fields" in record]
-=======
-            records = self.client.search_records(search_text)
-            if not records:
-                return f"No announcements found matching '{search_text}'."
-            
-            return [record["fields"] for record in records if "fields" in record]
->>>>>>> 2253f288b9c4533346f3133f2f1128116c5c12c8
         except Exception as e:
             error_msg = f"Error searching announcements for '{search_text}': {str(e)}"
             logger.error(error_msg, exc_info=True)
             return error_msg
     
-<<<<<<< HEAD
     def search_announcements_by_sender(self, sender_name: str) -> Dict[str, Any]:
         """
         Search announcements by sender name.
@@ -378,10 +332,10 @@ class AirtableTool:
             formats = [
                 "%m/%d/%Y %I:%M%p",  # 5/7/2025 2:29pm
                 "%m/%d/%Y %H:%M",    # 5/7/2025 14:29
-                "%Y-%m-%d %I:%M%p",  # 2025-05-07 2:29pm
+                "%m/%d/%Y",          # 5/7/2025
+                "%Y-%m-%d %H:%M:%S", # 2025-05-07 14:29:00
                 "%Y-%m-%d %H:%M",    # 2025-05-07 14:29
-                "%m/%d/%Y",          # 5/7/2025 (date only)
-                "%Y-%m-%d"           # 2025-05-07 (date only)
+                "%Y-%m-%d"           # 2025-05-07
             ]
             
             for fmt in formats:
@@ -390,67 +344,16 @@ class AirtableTool:
                 except ValueError:
                     continue
             
-            # If none of the formats match, try a more flexible approach
-            # Extract date and time parts
-            date_match = re.search(r'(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})', sent_time_str)
-            time_match = re.search(r'(\d{1,2}):(\d{2})(?:am|pm|AM|PM)?', sent_time_str)
-            am_pm_match = re.search(r'(am|pm|AM|PM)', sent_time_str)
-            
-            if date_match:
-                month, day, year = date_match.groups()
-                # Handle 2-digit years
-                if len(year) == 2:
-                    year = f"20{year}" if int(year) < 50 else f"19{year}"
-                
-                if time_match:
-                    hour, minute = time_match.groups()
-                    hour = int(hour)
-                    # Handle AM/PM
-                    if am_pm_match:
-                        am_pm = am_pm_match.group(1).lower()
-                        if am_pm == 'pm' and hour < 12:
-                            hour += 12
-                        elif am_pm == 'am' and hour == 12:
-                            hour = 0
-                    
-                    return datetime(int(year), int(month), int(day), hour, int(minute))
-                else:
-                    # Date only
-                    return datetime(int(year), int(month), int(day))
-            
-            # If all parsing attempts fail
-            logger.warning(f"Could not parse date string: {sent_time_str}")
             return None
-            
         except Exception as e:
-            logger.error(f"Error parsing date '{sent_time_str}': {str(e)}", exc_info=True)
+            logger.warning(f"Error parsing date '{sent_time_str}': {str(e)}")
             return None
-    
-=======
->>>>>>> 2253f288b9c4533346f3133f2f1128116c5c12c8
-    def _get_first_attachment_url(self, record_fields: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
-        """
-        Helper to get the URL and filename of the first attachment from a record.
-        
-        Args:
-            record_fields: Record fields dictionary
-            
-        Returns:
-            Tuple of (url, filename) or (None, None) if no attachment found
-        """
-        attachments = record_fields.get("Attachments")
-        if attachments and isinstance(attachments, list) and len(attachments) > 0:
-            first_attachment = attachments[0]
-            if isinstance(first_attachment, dict) and "url" in first_attachment:
-                return first_attachment["url"], first_attachment.get("filename", "downloaded_file")
-        return None, None
     
     def get_attachment_from_announcement(self, announcement_id: Optional[str] = None, 
-                                        search_term: Optional[str] = None, 
+                                        search_term: Optional[str] = None,
                                         get_latest: bool = False) -> Tuple[str, Optional[str]]:
         """
-        Gets the attachment URL and filename from a specific announcement.
-        Priority: announcement_id, then search_term, then get_latest.
+        Get attachment URL from an announcement.
         
         Args:
             announcement_id: Airtable record ID
@@ -458,46 +361,63 @@ class AirtableTool:
             get_latest: Whether to get the latest announcement
             
         Returns:
-            Tuple of (url or error message, filename)
+            Tuple of (URL, filename) or (error message, None)
         """
         if not self.client.airtable:
-            return "Error: Airtable connection not initialized.", None
+            error_msg = "Error: Airtable connection not initialized."
+            logger.error(error_msg)
+            return error_msg, None
         
-        target_record = None
         try:
-            if announcement_id:
-                record = self.client.get_record_by_id(announcement_id)
-                if record:
-                    target_record = record
-                else:
-                    return f"Error: Announcement with ID '{announcement_id}' not found.", None
-            elif search_term:
-                results = self.search_announcements(search_term)
-                if isinstance(results, str):  # Error or no results
-                    return f"Could not find announcement via search term '{search_term}' to get attachment: {results}", None
-                if results:  # results is a list of records
-                    target_record = {"fields": results[0]}  # Get the first matching announcement
-                else:
-                    return f"No announcement found matching search term '{search_term}' to get attachment from.", None
-            elif get_latest:
-                record = self.client.get_latest_record()
-                if record:
-                    target_record = record
-                else:
-                    return "Error: Could not retrieve the latest announcement or no announcements exist.", None
-            else:
-                return "Error: No criteria (ID, search term, or latest) provided to find an announcement.", None
+            # Get the announcement record
+            record = None
             
-            if target_record:
-                url, filename = self._get_first_attachment_url(target_record["fields"])
-                if url and filename:
-                    return url, filename
-                else:
-                    ann_title = target_record["fields"].get("Title", "[Unknown Title]")
-                    return f"No attachment found in the announcement titled '{ann_title}'.", None
+            if announcement_id:
+                # Get by ID
+                record = self.client.get_record_by_id(announcement_id)
+                if not record:
+                    return f"No announcement found with ID '{announcement_id}'.", None
+            
+            elif search_term:
+                # Search for the announcement
+                records = self.client.search_records(search_term)
+                if not records:
+                    return f"No announcements found matching '{search_term}'.", None
+                
+                # Use the first match
+                record = records[0]
+            
+            elif get_latest:
+                # Get the latest announcement
+                records = self.client.get_all_records()
+                if not records:
+                    return "No announcements found.", None
+                
+                # Sort by SentTime (descending)
+                records.sort(key=lambda r: r.get("fields", {}).get("SentTime", ""), reverse=True)
+                record = records[0]
+            
             else:
-                # This case should ideally be caught by earlier checks
-                return "Error: No matching announcement found to get attachment from.", None
+                return "Error: Must provide either announcement_id, search_term, or get_latest=True.", None
+            
+            # Get attachment URL from the record
+            fields = record.get("fields", {})
+            documents = fields.get("Documents", [])
+            
+            if not documents:
+                announcement_title = fields.get("Title", "Unknown")
+                return f"No attachments found for announcement '{announcement_title}'.", None
+            
+            # Use the first attachment
+            attachment = documents[0]
+            url = attachment.get("url")
+            filename = attachment.get("filename")
+            
+            if not url:
+                return "Error: Attachment URL not found.", None
+            
+            return url, filename
+        
         except Exception as e:
             error_msg = f"Error getting attachment: {str(e)}"
             logger.error(error_msg, exc_info=True)
@@ -505,65 +425,35 @@ class AirtableTool:
     
     def download_file(self, url: str) -> str:
         """
-        Downloads a file from a URL to a local path.
+        Download a file from a URL.
         
         Args:
-            url: URL of the file to download
+            url: URL to download from
             
         Returns:
-            Filepath or error string
+            Local file path or error message
         """
-        if not url:
-            return "Error: No URL provided for download."
-        
         try:
-            response = requests.get(url, stream=True, timeout=30)
+            # Extract filename from URL
+            filename = url.split("/")[-1]
+            if not filename:
+                filename = "downloaded_file"
+            
+            # Create local file path
+            local_path = os.path.join(self.download_dir, filename)
+            
+            # Download the file
+            response = requests.get(url, stream=True)
             response.raise_for_status()
             
-            # Try to get filename from content-disposition header
-            content_disposition = response.headers.get("content-disposition")
-            filename = None
-            if content_disposition:
-                import re
-                fname = re.findall("filename=(.+)", content_disposition)
-                if fname:
-                    filename = fname[0].strip("\"").strip("'")
-            
-            # If not found in header, extract from URL
-            if not filename:
-                from urllib.parse import unquote
-                filename = unquote(url.split("/")[-1].split("?")[0])
-            
-            # Fallback filename
-            if not filename:
-                filename = "downloaded_attachment"
-            
-            # Ensure filename has an extension
-            if "." not in os.path.basename(filename):
-                content_type = response.headers.get("content-type", "").lower()
-                if "pdf" in content_type:
-                    filename += ".pdf"
-                elif "openxmlformats-officedocument.wordprocessingml.document" in content_type:
-                    filename += ".docx"
-                elif "plain" in content_type:
-                    filename += ".txt"
-                else:
-                    filename += ".pdf"  # Default
-            
-            # Sanitize filename
-            filename = "".join(c for c in filename if c.isalnum() or c in (".", "-", "_")).rstrip()
-            if not filename:
-                filename = "sanitized_download.pdf"
-            
-            local_filepath = os.path.join(self.download_dir, filename)
-            
-            with open(local_filepath, "wb") as f:
+            with open(local_path, "wb") as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
             
-            logger.info(f"File downloaded successfully to {local_filepath}")
-            return local_filepath
+            logger.info(f"Downloaded file to {local_path}")
+            return local_path
+        
         except Exception as e:
-            error_msg = f"Error downloading file from {url}: {str(e)}"
+            error_msg = f"Error downloading file: {str(e)}"
             logger.error(error_msg, exc_info=True)
             return error_msg
