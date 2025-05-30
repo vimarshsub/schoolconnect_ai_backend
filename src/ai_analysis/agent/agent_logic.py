@@ -7,7 +7,8 @@ import logging
 from typing import Dict, List, Any, Optional
 from langchain.chat_models import ChatOpenAI
 from langchain.agents import initialize_agent, AgentType
-from langchain.tools import Tool
+from langchain.tools import Tool, StructuredTool
+from pydantic import BaseModel, Field
 
 from src.core.config import get_settings
 from src.ai_analysis.tools.airtable_tool import AirtableTool
@@ -18,6 +19,30 @@ logger = logging.getLogger("schoolconnect_ai")
 
 # Memory key for chat history
 MEMORY_KEY = "chat_history"
+
+# Define Pydantic models for structured tool inputs
+class CalendarEventInput(BaseModel):
+    title: str = Field(..., description="Title of the event")
+    start_time: str = Field(..., description="Start time in ISO format (YYYY-MM-DDTHH:MM:SS)")
+    end_time: Optional[str] = Field(None, description="End time in ISO format (YYYY-MM-DDTHH:MM:SS)")
+    description: Optional[str] = Field(None, description="Description of the event")
+    location: Optional[str] = Field(None, description="Location of the event")
+    attendees: Optional[str] = Field(None, description="Comma-separated list of attendee email addresses")
+    reminder_minutes: Optional[int] = Field(None, description="Reminder time in minutes before the event")
+
+class CalendarReminderInput(BaseModel):
+    title: str = Field(..., description="Title of the reminder")
+    due_date: str = Field(..., description="Due date in ISO format (YYYY-MM-DDTHH:MM:SS)")
+    description: Optional[str] = Field(None, description="Description of the reminder")
+
+class CalendarSearchInput(BaseModel):
+    query: Optional[str] = Field(None, description="Search term to find events")
+    start_date: Optional[str] = Field(None, description="Start date in 'YYYY-MM-DD' format")
+    end_date: Optional[str] = Field(None, description="End date in 'YYYY-MM-DD' format")
+    max_results: Optional[int] = Field(10, description="Maximum number of results to return")
+
+class CalendarDeleteInput(BaseModel):
+    event_id: str = Field(..., description="ID of the event to delete")
 
 class AgentManager:
     """Manager for AI agent setup and execution."""
@@ -35,6 +60,76 @@ class AgentManager:
         
         # Set up agent
         self.agent_executor = self._setup_agent()
+    
+    def _create_calendar_event(self, input_data: CalendarEventInput) -> str:
+        """
+        Wrapper for calendar event creation that handles structured input.
+        
+        Args:
+            input_data: Structured input for calendar event
+            
+        Returns:
+            Success or error message
+        """
+        # Convert attendees from string to list if provided
+        attendees_list = None
+        if input_data.attendees:
+            attendees_list = [email.strip() for email in input_data.attendees.split(',')]
+        
+        return self.calendar_tool.create_event(
+            title=input_data.title,
+            start_time=input_data.start_time,
+            end_time=input_data.end_time,
+            description=input_data.description,
+            location=input_data.location,
+            attendees=attendees_list,
+            reminder_minutes=input_data.reminder_minutes
+        )
+    
+    def _create_calendar_reminder(self, input_data: CalendarReminderInput) -> str:
+        """
+        Wrapper for calendar reminder creation that handles structured input.
+        
+        Args:
+            input_data: Structured input for calendar reminder
+            
+        Returns:
+            Success or error message
+        """
+        return self.calendar_tool.create_reminder(
+            title=input_data.title,
+            due_date=input_data.due_date,
+            description=input_data.description
+        )
+    
+    def _search_calendar_events(self, input_data: CalendarSearchInput) -> Dict:
+        """
+        Wrapper for calendar event search that handles structured input.
+        
+        Args:
+            input_data: Structured input for calendar search
+            
+        Returns:
+            Search results or error message
+        """
+        return self.calendar_tool.search_events(
+            query=input_data.query,
+            start_date=input_data.start_date,
+            end_date=input_data.end_date,
+            max_results=input_data.max_results
+        )
+    
+    def _delete_calendar_event(self, input_data: CalendarDeleteInput) -> str:
+        """
+        Wrapper for calendar event deletion that handles structured input.
+        
+        Args:
+            input_data: Structured input for calendar event deletion
+            
+        Returns:
+            Success or error message
+        """
+        return self.calendar_tool.delete_event(event_id=input_data.event_id)
     
     def _setup_agent(self):
         """
@@ -82,25 +177,26 @@ class AgentManager:
                 func=self._analyze_document,
                 description="Analyze a document (PDF) using OpenAI. Specify the analysis type: summarize, extract_action_items, sentiment, or custom."
             ),
-            Tool(
+            # Use StructuredTool for calendar operations to handle multiple arguments
+            StructuredTool.from_function(
+                func=self._create_calendar_event,
                 name="create_calendar_event",
-                func=self.calendar_tool.create_event,
-                description="Create a Google Calendar event. Requires title, start_time, end_time, and optionally description, location, attendees, and reminder_minutes."
+                description="Create a Google Calendar event with title, times, and optional details."
             ),
-            Tool(
+            StructuredTool.from_function(
+                func=self._search_calendar_events,
                 name="search_calendar_events",
-                func=self.calendar_tool.search_events,
-                description="Search for events in Google Calendar. Optionally specify query, start_date, end_date, and max_results."
+                description="Search for events in Google Calendar with optional filters."
             ),
-            Tool(
+            StructuredTool.from_function(
+                func=self._create_calendar_reminder,
                 name="create_calendar_reminder",
-                func=self.calendar_tool.create_reminder,
-                description="Create a reminder in Google Calendar. Requires title, due_date, and optionally description."
+                description="Create a reminder in Google Calendar with title and due date."
             ),
-            Tool(
+            StructuredTool.from_function(
+                func=self._delete_calendar_event,
                 name="delete_calendar_event",
-                func=self.calendar_tool.delete_event,
-                description="Delete an event from Google Calendar. Requires event_id."
+                description="Delete an event from Google Calendar by ID."
             )
         ]
         
