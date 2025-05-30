@@ -31,11 +31,7 @@ class AgentManager:
         # Initialize tools
         self.airtable_tool = AirtableTool()
         self.openai_analysis_tool = OpenAIDocumentAnalysisTool()
-        self.calendar_tool = None
-        
-        # Check if Google Calendar credentials exist and are not None or empty
-        if hasattr(settings, 'GOOGLE_CALENDAR_CREDENTIALS') and settings.GOOGLE_CALENDAR_CREDENTIALS:
-            self.calendar_tool = GoogleCalendarTool()
+        self.calendar_tool = GoogleCalendarTool()
         
         # Set up agent
         self.agent_executor = self._setup_agent()
@@ -85,18 +81,28 @@ class AgentManager:
                 name="analyze_document",
                 func=self._analyze_document,
                 description="Analyze a document (PDF) using OpenAI. Specify the analysis type: summarize, extract_action_items, sentiment, or custom."
+            ),
+            Tool(
+                name="create_calendar_event",
+                func=self.calendar_tool.create_event,
+                description="Create a Google Calendar event. Requires title, start_time, end_time, and optionally description, location, attendees, and reminder_minutes."
+            ),
+            Tool(
+                name="search_calendar_events",
+                func=self.calendar_tool.search_events,
+                description="Search for events in Google Calendar. Optionally specify query, start_date, end_date, and max_results."
+            ),
+            Tool(
+                name="create_calendar_reminder",
+                func=self.calendar_tool.create_reminder,
+                description="Create a reminder in Google Calendar. Requires title, due_date, and optionally description."
+            ),
+            Tool(
+                name="delete_calendar_event",
+                func=self.calendar_tool.delete_event,
+                description="Delete an event from Google Calendar. Requires event_id."
             )
         ]
-        
-        # Add calendar tool if available
-        if self.calendar_tool:
-            tools.append(
-                Tool(
-                    name="create_calendar_event",
-                    func=self.calendar_tool.create_event,
-                    description="Create a Google Calendar event. Requires title, start_time, end_time, and optionally description and attendees."
-                )
-            )
         
         # Create agent using the legacy initialize_agent method
         agent_executor = initialize_agent(
