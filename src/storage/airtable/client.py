@@ -45,7 +45,18 @@ class AirtableClient:
             return None
         
         try:
-            result = self.airtable.insert(record_data)
+            # Check if record_data contains attachments
+            if "Attachments" in record_data:
+                logger.info(f"Record contains attachments: {len(record_data['Attachments'])} files")
+                
+                # Ensure record is properly formatted for Airtable with fields wrapper
+                # This is critical for attachments to work correctly
+                formatted_record = {"fields": record_data}
+                result = self.airtable.insert(formatted_record["fields"])
+            else:
+                # For records without attachments, use the standard approach
+                result = self.airtable.insert(record_data)
+                
             logger.info(f"Created record in Airtable with ID: {result.get('id')}")
             return result
         except Exception as e:
