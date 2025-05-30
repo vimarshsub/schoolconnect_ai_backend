@@ -189,12 +189,12 @@ class SchoolConnectClient:
         Fetch documents for a specific announcement.
         
         Args:
-            announcement_id: ID of the announcement
+            announcement_id: ID of the announcement (should be dbId, not GraphQL ID)
             
         Returns:
             List of document dictionaries
         """
-        logger.info(f"Fetching documents for announcement {announcement_id}")
+        logger.info(f"Fetching documents for announcement dbId: {announcement_id}")
         
         # Re-authenticate before fetching documents to ensure fresh session
         if self.username and self.password:
@@ -211,6 +211,8 @@ class SchoolConnectClient:
             'Referer': 'https://connect.schoolstatus.com/'
         }
         
+        # CRITICAL FIX: Use the announcement dbId directly, not the GraphQL ID
+        # This matches the original ClassTagWorkflowApp implementation
         documents_payload = {
             "query": """
                 query AnnouncementDocumentsQuery($id: ID!) {
@@ -227,9 +229,14 @@ class SchoolConnectClient:
                 }
             """,
             "variables": {
-                "id": announcement_id
+                "id": f"Announcement:{announcement_id}"  # Format as "Announcement:dbId" as in original app
             }
         }
+        
+        # Log the exact ID format being used
+        logger.info(f"Using ID format for document query: Announcement:{announcement_id}")
+        
+        logger.info(f"Document query payload: {json.dumps(documents_payload)}")
         
         try:
             response = self.session.post(self.graphql_url, json=documents_payload, headers=headers, timeout=30)
@@ -243,6 +250,10 @@ class SchoolConnectClient:
             
             documents = data.get("data", {}).get("announcement", {}).get("documents", [])
             logger.info(f"Found {len(documents)} documents for announcement {announcement_id}")
+            
+            # Log document details for debugging
+            for i, doc in enumerate(documents):
+                logger.info(f"Document {i+1}: filename={doc.get('fileFilename')}, contentType={doc.get('contentType')}, URL={doc.get('fileUrl')}")
             
             return documents
         except Exception as e:
