@@ -76,22 +76,7 @@ class FetchAnnouncementsTask:
         # Fetch announcements with pagination
         all_announcements = []
         
-        # First try to directly fetch the target announcements if we have their IDs
-        for announcement_id in self.target_announcement_ids:
-            # Convert the raw ID to the encoded format expected by the API
-            encoded_id = self._encode_announcement_id(announcement_id)
-            
-            # Use the encoded ID for the GraphQL query
-            target_announcement = self._fetch_specific_announcement(client, encoded_id, announcement_id)
-            if target_announcement:
-                logger.info(f"Successfully fetched target announcement {announcement_id} directly")
-                all_announcements.append(target_announcement)
-                self.target_found.add(announcement_id)
-                
-                # Log the target announcement data
-                logger.info(f"Target announcement {announcement_id} data: {json.dumps(target_announcement)}")
-        
-        # Continue with normal pagination to get other announcements
+        # Continue with normal pagination to get announcements
         has_next_page = True
         end_cursor = None
         page_count = 0
@@ -142,6 +127,8 @@ class FetchAnnouncementsTask:
                     logger.info(f"Processing target announcement {announcement_id}: {announcement.get('title')}")
                 
                 # Fetch documents for this announcement
+                # IMPORTANT: Use the 'id' field directly from pagination results
+                # This is the GraphQL ID already in the correct format
                 documents = client.fetch_announcement_documents(announcement["id"])
                 announcement["documents"] = documents
                 
@@ -172,78 +159,6 @@ class FetchAnnouncementsTask:
             "announcements_saved": saved_count,
             "target_found": list(self.target_found)
         }
-    
-    def _fetch_specific_announcement(self, client: SchoolConnectClient, encoded_id: str, raw_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Fetch a specific announcement by ID.
-        
-        Args:
-            client: Authenticated SchoolConnect client
-            encoded_id: Base64 encoded ID for the GraphQL query
-            raw_id: Original raw ID for logging
-            
-        Returns:
-            Announcement data or None if not found
-        """
-        logger.info(f"Attempting to fetch specific announcement with ID: {raw_id} (encoded: {encoded_id})")
-        
-        try:
-            # Construct a GraphQL query to fetch a specific announcement
-            query = {
-                "query": """
-                    query AnnouncementQuery($id: ID!) {
-                        announcement(id: $id) {
-                            id
-                            dbId
-                            title
-                            message
-                            createdAt
-                            user {
-                                permittedName
-                                avatarUrl
-                            }
-                            documentsCount
-                        }
-                    }
-                """,
-                "variables": {
-                    "id": encoded_id
-                }
-            }
-            
-            # Execute the query
-            response = client.session.post(
-                client.graphql_url,
-                json=query,
-                headers=client.headers,
-                timeout=30
-            )
-            
-            # Log response status for debugging
-            logger.info(f"Response status for announcement {raw_id}: {response.status_code}")
-            logger.debug(f"Response text for announcement {raw_id}: {response.text[:500]}...")
-            
-            response.raise_for_status()
-            data = response.json()
-            
-            # Check for errors
-            if "errors" in data:
-                error_message = data["errors"][0]["message"]
-                logger.error(f"GraphQL error fetching announcement {raw_id}: {error_message}")
-                return None
-            
-            # Extract announcement data
-            announcement_data = data.get("data", {}).get("announcement")
-            if not announcement_data:
-                logger.warning(f"Announcement {raw_id} not found")
-                return None
-            
-            logger.info(f"Successfully fetched specific announcement: {announcement_data.get('title')}")
-            return announcement_data
-            
-        except Exception as e:
-            logger.error(f"Error fetching specific announcement {raw_id}: {str(e)}", exc_info=True)
-            return None
     
     def _save_to_airtable(self, announcements: List[Dict[str, Any]]) -> int:
         """

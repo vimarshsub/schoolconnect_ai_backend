@@ -198,8 +198,8 @@ class SchoolConnectClient:
                     if edge and edge.get("node"):
                         node = edge["node"]
                         processed_announcements.append({
-                            "id": node.get("id"),
-                            "dbId": node.get("dbId"),
+                            "id": node.get("id"),  # This is the GraphQL ID already in the correct format
+                            "dbId": node.get("dbId"),  # This is the numeric ID
                             "title": node.get("title"),
                             "message": node.get("message"),
                             "createdAt": node.get("createdAt"),
@@ -228,7 +228,7 @@ class SchoolConnectClient:
         Fetch documents for a specific announcement.
         
         Args:
-            announcement_id: ID of the announcement
+            announcement_id: ID of the announcement (must be the GraphQL ID from pagination, not the numeric dbId)
             
         Returns:
             List of document dictionaries
@@ -243,6 +243,8 @@ class SchoolConnectClient:
         else:
             logger.warning("Cannot re-authenticate before fetching documents: missing credentials")
         
+        # IMPORTANT: Use the announcement_id directly from pagination results (already in correct format)
+        # Do NOT attempt to encode or modify the ID - this was the source of the 404 errors
         documents_payload = {
             "query": """
                 query AnnouncementDocumentsQuery($id: ID!) {
@@ -259,7 +261,7 @@ class SchoolConnectClient:
                 }
             """,
             "variables": {
-                "id": announcement_id
+                "id": announcement_id  # Use the ID directly as provided
             }
         }
 
