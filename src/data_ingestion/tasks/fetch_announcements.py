@@ -6,6 +6,7 @@ import logging
 import time
 import json
 import os
+import base64
 from typing import Dict, List, Optional, Any, Set
 
 from src.core.config import get_settings
@@ -27,6 +28,22 @@ class FetchAnnouncementsTask:
         # Target announcement IDs to specifically debug
         self.target_announcement_ids = {"15992525", "15929951", "15957863"}
         self.target_found = set()
+    
+    def _encode_announcement_id(self, raw_id: str) -> str:
+        """
+        Encode a raw announcement ID into the format expected by SchoolConnect GraphQL API.
+        
+        Args:
+            raw_id: Raw announcement ID (numeric string)
+            
+        Returns:
+            Base64 encoded ID in the format expected by the API
+        """
+        # Format: Base64("Announcement-" + raw_id)
+        id_string = f"Announcement-{raw_id}"
+        encoded_id = base64.b64encode(id_string.encode()).decode()
+        logger.info(f"Encoded announcement ID: {raw_id} -> {encoded_id}")
+        return encoded_id
     
     def execute(self, username: str, password: str, max_pages: int = 20) -> Dict[str, Any]:
         """
@@ -61,7 +78,11 @@ class FetchAnnouncementsTask:
         
         # First try to directly fetch the target announcements if we have their IDs
         for announcement_id in self.target_announcement_ids:
-            target_announcement = self._fetch_specific_announcement(client, announcement_id)
+            # Convert the raw ID to the encoded format expected by the API
+            encoded_id = self._encode_announcement_id(announcement_id)
+            
+            # Use the encoded ID for the GraphQL query
+            target_announcement = self._fetch_specific_announcement(client, encoded_id, announcement_id)
             if target_announcement:
                 logger.info(f"Successfully fetched target announcement {announcement_id} directly")
                 all_announcements.append(target_announcement)
@@ -152,18 +173,19 @@ class FetchAnnouncementsTask:
             "target_found": list(self.target_found)
         }
     
-    def _fetch_specific_announcement(self, client: SchoolConnectClient, announcement_id: str) -> Optional[Dict[str, Any]]:
+    def _fetch_specific_announcement(self, client: SchoolConnectClient, encoded_id: str, raw_id: str) -> Optional[Dict[str, Any]]:
         """
         Fetch a specific announcement by ID.
         
         Args:
             client: Authenticated SchoolConnect client
-            announcement_id: ID of the announcement to fetch
+            encoded_id: Base64 encoded ID for the GraphQL query
+            raw_id: Original raw ID for logging
             
         Returns:
             Announcement data or None if not found
         """
-        logger.info(f"Attempting to fetch specific announcement with ID: {announcement_id}")
+        logger.info(f"Attempting to fetch specific announcement with ID: {raw_id} (encoded: {encoded_id})")
         
         try:
             # Construct a GraphQL query to fetch a specific announcement
@@ -185,7 +207,7 @@ class FetchAnnouncementsTask:
                     }
                 """,
                 "variables": {
-                    "id": f"Announcement:{announcement_id}"
+                    "id": encoded_id
                 }
             }
             
@@ -197,9 +219,9 @@ class FetchAnnouncementsTask:
                 timeout=30
             )
             
-            # Log raw response for debugging
-            logger.info(f"Response status for announcement {announcement_id}: {response.status_code}")
-            logger.debug(f"Response text for announcement {announcement_id}: {response.text[:500]}...")
+            # Log response status for debugging
+            logger.info(f"Response status for announcement {raw_id}: {response.status_code}")
+            logger.debug(f"Response text for announcement {raw_id}: {response.text[:500]}...")
             
             response.raise_for_status()
             data = response.json()
@@ -207,20 +229,20 @@ class FetchAnnouncementsTask:
             # Check for errors
             if "errors" in data:
                 error_message = data["errors"][0]["message"]
-                logger.error(f"GraphQL error fetching announcement {announcement_id}: {error_message}")
+                logger.error(f"GraphQL error fetching announcement {raw_id}: {error_message}")
                 return None
             
             # Extract announcement data
             announcement_data = data.get("data", {}).get("announcement")
             if not announcement_data:
-                logger.warning(f"Announcement {announcement_id} not found")
+                logger.warning(f"Announcement {raw_id} not found")
                 return None
             
             logger.info(f"Successfully fetched specific announcement: {announcement_data.get('title')}")
             return announcement_data
             
         except Exception as e:
-            logger.error(f"Error fetching specific announcement {announcement_id}: {str(e)}", exc_info=True)
+            logger.error(f"Error fetching specific announcement {raw_id}: {str(e)}", exc_info=True)
             return None
     
     def _save_to_airtable(self, announcements: List[Dict[str, Any]]) -> int:
