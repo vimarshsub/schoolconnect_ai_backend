@@ -4,7 +4,9 @@ Utility class for date operations and relative date calculations.
 
 from datetime import datetime, timedelta
 import calendar
+import re
 from typing import Dict, Any, Optional
+from dateutil import parser as dateutil_parser
 
 class DateUtilsTool:
     """
@@ -169,13 +171,31 @@ class DateUtilsTool:
         Returns:
             datetime or None: Parsed datetime object or None if failed
         """
+        # First, try to use dateutil parser which handles ISO 8601 well
+        try:
+            # Handle ISO 8601 with Z timezone indicator
+            if 'Z' in date_string:
+                # Replace Z with +00:00 for ISO format compatibility
+                clean_date_string = date_string.replace('Z', '+00:00')
+                return dateutil_parser.parse(clean_date_string)
+            
+            # Try dateutil parser for any format
+            return dateutil_parser.parse(date_string)
+        except (ValueError, TypeError):
+            pass
+        
+        # If dateutil fails, try standard formats
         try:
             if include_time:
+                # Try standard ISO format
                 return datetime.strptime(date_string, self.iso_format)
             return datetime.strptime(date_string, self.display_format)
         except ValueError:
             # Try different common formats if the standard format doesn't work
             formats = [
+                "%Y-%m-%dT%H:%M:%S",  # ISO without Z
+                "%Y-%m-%dT%H:%M:%SZ",  # ISO with Z
+                "%Y-%m-%d %H:%M:%S",   # Common datetime format
                 "%Y-%m-%d",
                 "%Y/%m/%d",
                 "%m/%d/%Y",
@@ -227,7 +247,7 @@ class DateUtilsTool:
         Get a date relative to a reference point with an offset.
         
         Args:
-            reference (str): Reference point ('today', 'yesterday', 'start_of_week', etc.)
+            reference (str): Reference point ('today', 'tomorrow', 'yesterday', 'start_of_week', etc.)
             offset_days (int): Number of days to offset (can be negative)
             
         Returns:
@@ -282,7 +302,36 @@ class DateUtilsTool:
         Returns:
             str or None: Normalized date string in ISO format or None if parsing failed
         """
-        # Try to parse the date string
+        # Special handling for ISO 8601 format with or without Z
+        iso_pattern = r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|(?:[+-]\d{2}:\d{2}))?$'
+        if re.match(iso_pattern, date_string):
+            try:
+                # For ISO format, just ensure it's in the future
+                parsed_date = self.parse_date_string(date_string, include_time=True)
+                if parsed_date:
+                    # Ensure the date is not in the past
+                    now = datetime.now()
+                    if parsed_date.year < now.year:
+                        # Update to current year
+                        try:
+                            parsed_date = parsed_date.replace(year=now.year)
+                            # If this date is still in the past (e.g., earlier in the current year),
+                            # move to next year
+                            if parsed_date < now:
+                                parsed_date = parsed_date.replace(year=now.year + 1)
+                        except ValueError:
+                            # Handle February 29 in non-leap years
+                            if parsed_date.month == 2 and parsed_date.day == 29 and not calendar.isleap(now.year):
+                                parsed_date = datetime(now.year, 3, 1, 
+                                                      parsed_date.hour, parsed_date.minute, parsed_date.second)
+                    
+                    # Format as ISO string
+                    return parsed_date.strftime(self.iso_format)
+                return None
+            except Exception:
+                return None
+        
+        # Try to parse the date string for non-ISO formats
         parsed_date = self.parse_date_string(date_string)
         
         if parsed_date is None:
@@ -329,7 +378,6 @@ class DateUtilsTool:
                 
                 if found_month:
                     # Try to extract a day number
-                    import re
                     day_match = re.search(r'\b(\d{1,2})(st|nd|rd|th)?\b', date_string)
                     if day_match:
                         day = int(day_match.group(1))
