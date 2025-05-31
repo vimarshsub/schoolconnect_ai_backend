@@ -14,6 +14,7 @@ from src.core.config import get_settings
 from src.ai_analysis.tools.airtable_tool import AirtableTool
 from src.ai_analysis.tools.openai_tool import OpenAIDocumentAnalysisTool
 from src.ai_analysis.tools.google_calendar_tool import GoogleCalendarTool
+from src.ai_analysis.tools.date_utils_tool import DateUtilsTool
 
 logger = logging.getLogger("schoolconnect_ai")
 
@@ -44,6 +45,13 @@ class CalendarSearchInput(BaseModel):
 class CalendarDeleteInput(BaseModel):
     event_id: str = Field(description="ID of the event to delete")
 
+class DateRangeInput(BaseModel):
+    period: str = Field(description="Time period ('today', 'yesterday', 'this_week', 'last_week', 'this_month', 'last_month', 'next_month', 'this_year', 'last_year')")
+
+class RelativeDateInput(BaseModel):
+    reference: str = Field(description="Reference point ('today', 'tomorrow', 'yesterday', 'start_of_week', 'end_of_week', 'start_of_month', 'end_of_month')")
+    offset_days: Optional[int] = Field(0, description="Number of days to offset (can be negative)")
+
 class AgentManager:
     """Manager for AI agent setup and execution."""
     
@@ -57,6 +65,7 @@ class AgentManager:
         self.airtable_tool = AirtableTool()
         self.openai_analysis_tool = OpenAIDocumentAnalysisTool()
         self.calendar_tool = GoogleCalendarTool()
+        self.date_utils = DateUtilsTool()
         
         # Set up agent
         self.agent_executor = self._setup_agent()
@@ -82,6 +91,17 @@ class AgentManager:
         Returns:
             Success or error message
         """
+        # Normalize dates to ensure they're in the future and properly formatted
+        normalized_start = self.date_utils.normalize_date_string(start_datetime)
+        if not normalized_start:
+            return f"Error: Could not parse start date '{start_datetime}'. Please provide a valid date."
+        
+        normalized_end = None
+        if end_datetime:
+            normalized_end = self.date_utils.normalize_date_string(end_datetime)
+            if not normalized_end:
+                return f"Error: Could not parse end date '{end_datetime}'. Please provide a valid date."
+        
         # Convert attendees from string to list if provided
         attendees_list = None
         if attendees:
@@ -89,8 +109,8 @@ class AgentManager:
         
         return self.calendar_tool.create_event(
             title=title,
-            start_time=start_datetime,
-            end_time=end_datetime,
+            start_time=normalized_start,
+            end_time=normalized_end,
             description=description,
             location=location,
             attendees=attendees_list,
@@ -110,9 +130,14 @@ class AgentManager:
         Returns:
             Success or error message
         """
+        # Normalize date to ensure it's in the future and properly formatted
+        normalized_date = self.date_utils.normalize_date_string(due_date)
+        if not normalized_date:
+            return f"Error: Could not parse due date '{due_date}'. Please provide a valid date."
+        
         return self.calendar_tool.create_reminder(
             title=title,
-            due_date=due_date,
+            due_date=normalized_date,
             description=description
         )
     
@@ -132,10 +157,23 @@ class AgentManager:
         Returns:
             Search results or error message
         """
+        # Normalize dates if provided
+        normalized_start = None
+        if start_date:
+            normalized_start = self.date_utils.normalize_date_string(start_date)
+            if not normalized_start:
+                return f"Error: Could not parse start date '{start_date}'. Please provide a valid date."
+        
+        normalized_end = None
+        if end_date:
+            normalized_end = self.date_utils.normalize_date_string(end_date)
+            if not normalized_end:
+                return f"Error: Could not parse end date '{end_date}'. Please provide a valid date."
+        
         return self.calendar_tool.search_events(
             query=query,
-            start_date=start_date,
-            end_date=end_date,
+            start_date=normalized_start,
+            end_date=normalized_end,
             max_results=max_results
         )
     
@@ -150,6 +188,40 @@ class AgentManager:
             Success or error message
         """
         return self.calendar_tool.delete_event(event_id=event_id)
+    
+    def _get_current_date_wrapper(self) -> str:
+        """
+        Get the current date and time.
+        
+        Returns:
+            Current date and time in ISO format
+        """
+        return self.date_utils.get_current_date(include_time=True)
+    
+    def _get_date_range_wrapper(self, period: str) -> Dict[str, Any]:
+        """
+        Get start and end dates for common time periods.
+        
+        Args:
+            period: Time period ('today', 'yesterday', 'this_week', etc.)
+            
+        Returns:
+            Dictionary with date range information
+        """
+        return self.date_utils.get_date_range(period)
+    
+    def _get_relative_date_wrapper(self, reference: str, offset_days: int = 0) -> Dict[str, Any]:
+        """
+        Get a date relative to a reference point with an offset.
+        
+        Args:
+            reference: Reference point ('today', 'tomorrow', etc.)
+            offset_days: Number of days to offset
+            
+        Returns:
+            Dictionary with date information
+        """
+        return self.date_utils.get_relative_date(reference, offset_days)
     
     def _setup_agent(self):
         """
@@ -197,7 +269,25 @@ class AgentManager:
                 func=self._analyze_document,
                 description="Analyze a document (PDF) using OpenAI. Specify the analysis type: summarize, extract_action_items, sentiment, or custom."
             ),
-            # Use StructuredTool with args_schema for calendar operations
+            # Date utility tools
+            Tool(
+                name="get_current_date",
+                func=self._get_current_date_wrapper,
+                description="Get the current date and time in ISO format. Use this to know the current date when creating events or reminders."
+            ),
+            StructuredTool.from_function(
+                func=self._get_date_range_wrapper,
+                name="get_date_range",
+                description="Get start and end dates for common time periods like 'today', 'this_week', 'last_month', etc.",
+                args_schema=DateRangeInput
+            ),
+            StructuredTool.from_function(
+                func=self._get_relative_date_wrapper,
+                name="get_relative_date",
+                description="Get a date relative to a reference point with an offset in days. For example, 'tomorrow' would be ('today', 1).",
+                args_schema=RelativeDateInput
+            ),
+            # Calendar tools with structured input
             StructuredTool.from_function(
                 func=self._create_calendar_event_wrapper,
                 name="create_calendar_event",
@@ -230,7 +320,22 @@ class AgentManager:
             llm=llm,
             agent=AgentType.OPENAI_FUNCTIONS,
             verbose=True,
-            handle_parsing_errors=True
+            handle_parsing_errors=True,
+            agent_kwargs={
+                "system_message": """You are a helpful assistant that can interact with Airtable, analyze documents, manage Google Calendar, and perform date calculations. 
+                
+The current year is 2025. Always use the current date tools to get accurate date information when working with calendar events or reminders.
+
+When creating calendar events or reminders:
+1. Always check the current date first using get_current_date
+2. For relative dates like "tomorrow" or "next week", use get_relative_date
+3. Ensure all dates are in the future and use the correct year (2025)
+4. Format dates in ISO format (YYYY-MM-DDTHH:MM:SSZ)
+
+For calendar-related tasks, help users create, find, and manage their events and reminders effectively. You can also provide date calculations and ranges when users need to know about specific time periods.
+
+Always maintain context between conversation turns."""
+            }
         )
         
         return agent_executor
