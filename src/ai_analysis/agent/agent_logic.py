@@ -53,6 +53,10 @@ class RelativeDateInput(BaseModel):
     reference: str = Field(description="Reference point ('today', 'tomorrow', 'yesterday', 'start_of_week', 'end_of_week', 'start_of_month', 'end_of_month')")
     offset_days: Optional[int] = Field(0, description="Number of days to offset (can be negative)")
 
+# Empty schema for tools that take no arguments
+class EmptySchema(BaseModel):
+    pass
+
 class AgentManager:
     """Manager for AI agent setup and execution."""
     
@@ -190,13 +194,10 @@ class AgentManager:
         """
         return self.calendar_tool.delete_event(event_id=event_id)
     
-    def _get_current_date_wrapper(self, _: Any = None) -> str:
+    def _get_current_date_wrapper(self) -> str:
         """
         Get the current date and time.
         
-        Args:
-            _: Unused parameter required by LangChain Tool
-            
         Returns:
             Current date and time in ISO format
         """
@@ -273,11 +274,12 @@ class AgentManager:
                 func=self._analyze_document,
                 description="Analyze a document (PDF) using OpenAI. Specify the analysis type: summarize, extract_action_items, sentiment, or custom."
             ),
-            # Date utility tools
-            Tool(
-                name="get_current_date",
+            # Date utility tools - using StructuredTool with empty schema for no-argument tools
+            StructuredTool.from_function(
                 func=self._get_current_date_wrapper,
-                description="Get the current date and time in ISO format. Use this to know the current date when creating events or reminders."
+                name="get_current_date",
+                description="Get the current date and time in ISO format. Use this to know the current date when creating events or reminders.",
+                args_schema=EmptySchema
             ),
             StructuredTool.from_function(
                 func=self._get_date_range_wrapper,
