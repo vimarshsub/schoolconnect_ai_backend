@@ -190,10 +190,13 @@ class AgentManager:
         """
         return self.calendar_tool.delete_event(event_id=event_id)
     
-    def _get_current_date_wrapper(self) -> str:
+    def _get_current_date_wrapper(self, _: Any = None) -> str:
         """
         Get the current date and time.
         
+        Args:
+            _: Unused parameter required by LangChain Tool
+            
         Returns:
             Current date and time in ISO format
         """
