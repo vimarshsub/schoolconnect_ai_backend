@@ -9,6 +9,7 @@ from langchain.chat_models import ChatOpenAI
 from langchain.agents import initialize_agent, AgentType
 from langchain.tools import Tool, StructuredTool
 from pydantic.v1 import BaseModel, Field  # Explicitly use pydantic.v1 to match LangChain
+from langchain.schema import SystemMessage
 
 from src.core.config import get_settings
 from src.ai_analysis.tools.airtable_tool import AirtableTool
@@ -314,15 +315,8 @@ class AgentManager:
             )
         ]
         
-        # Create agent using the legacy initialize_agent method
-        agent_executor = initialize_agent(
-            tools=tools,
-            llm=llm,
-            agent=AgentType.OPENAI_FUNCTIONS,
-            verbose=True,
-            handle_parsing_errors=True,
-            agent_kwargs={
-                "system_message": """You are a helpful assistant that can interact with Airtable, analyze documents, manage Google Calendar, and perform date calculations. 
+        # Create system message using the proper format
+        system_message = SystemMessage(content="""You are a helpful assistant that can interact with Airtable, analyze documents, manage Google Calendar, and perform date calculations. 
                 
 The current year is 2025. Always use the current date tools to get accurate date information when working with calendar events or reminders.
 
@@ -334,7 +328,17 @@ When creating calendar events or reminders:
 
 For calendar-related tasks, help users create, find, and manage their events and reminders effectively. You can also provide date calculations and ranges when users need to know about specific time periods.
 
-Always maintain context between conversation turns."""
+Always maintain context between conversation turns.""")
+        
+        # Create agent using the initialize_agent method with proper system message
+        agent_executor = initialize_agent(
+            tools=tools,
+            llm=llm,
+            agent=AgentType.OPENAI_FUNCTIONS,
+            verbose=True,
+            handle_parsing_errors=True,
+            agent_kwargs={
+                "system_message": system_message
             }
         )
         
