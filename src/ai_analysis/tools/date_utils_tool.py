@@ -1,57 +1,90 @@
 """
-Utility class for date operations and relative date calculations.
+Utility class for date operations and relative date calculations with timezone support.
 """
 
 from datetime import datetime, timedelta
 import calendar
 import re
-from typing import Dict, Any, Optional
+import pytz
+from typing import Dict, Any, Optional, Union
 from dateutil import parser as dateutil_parser
 
 class DateUtilsTool:
     """
     Utility class for common date operations used throughout the application.
     Provides methods for getting current date, last week, last month, next month,
-    this month, and other useful date ranges.
+    this month, and other useful date ranges with timezone support.
     """
     
-    def __init__(self):
+    def __init__(self, default_timezone: str = "UTC"):
+        """
+        Initialize the DateUtilsTool with timezone support.
+        
+        Args:
+            default_timezone (str): Default timezone to use (e.g., "America/New_York", "UTC")
+        """
         # Standard date format for ISO strings
         self.iso_format = "%Y-%m-%dT%H:%M:%SZ"
         # Standard date format for display
         self.display_format = "%Y-%m-%d"
+        # Default timezone
+        self.default_timezone = default_timezone
+        
+        # Validate the default timezone
+        try:
+            pytz.timezone(default_timezone)
+        except pytz.exceptions.UnknownTimeZoneError:
+            # Fall back to UTC if the timezone is invalid
+            self.default_timezone = "UTC"
     
-    def get_current_date(self, as_string: bool = True, include_time: bool = False) -> Any:
+    def get_current_date(self, as_string: bool = True, include_time: bool = False, 
+                         timezone: Optional[str] = None) -> Any:
         """
-        Get the current date.
+        Get the current date in the specified timezone.
         
         Args:
             as_string (bool): Return date as string if True, datetime object if False
             include_time (bool): Include time in string output if True
+            timezone (str, optional): Timezone to use (e.g., "America/New_York")
             
         Returns:
             str or datetime: Current date as string or datetime object
         """
-        now = datetime.now()
+        # Use the specified timezone or fall back to default
+        tz_name = timezone or self.default_timezone
+        try:
+            tz = pytz.timezone(tz_name)
+        except pytz.exceptions.UnknownTimeZoneError:
+            # Fall back to default timezone if the specified one is invalid
+            tz = pytz.timezone(self.default_timezone)
+        
+        # Get current time in the specified timezone
+        now = datetime.now(pytz.UTC).astimezone(tz)
+        
         if as_string:
             if include_time:
-                return now.strftime(self.iso_format)
+                # For ISO format, convert to UTC
+                utc_now = now.astimezone(pytz.UTC)
+                return utc_now.strftime(self.iso_format)
             return now.strftime(self.display_format)
         return now
     
-    def get_date_range(self, period: str, as_string: bool = True) -> Dict[str, Any]:
+    def get_date_range(self, period: str, as_string: bool = True, 
+                       timezone: Optional[str] = None) -> Dict[str, Any]:
         """
-        Get start and end dates for common time periods.
+        Get start and end dates for common time periods in the specified timezone.
         
         Args:
             period (str): Time period ('today', 'yesterday', 'this_week', 'last_week', 
                          'this_month', 'last_month', 'next_month', 'this_year', 'last_year')
             as_string (bool): Return dates as strings if True, datetime objects if False
+            timezone (str, optional): Timezone to use (e.g., "America/New_York")
             
         Returns:
             dict: Dictionary containing start_date and end_date
         """
-        now = datetime.now()
+        # Get current time in the specified timezone
+        now = self.get_current_date(as_string=False, timezone=timezone)
         
         if period == "today":
             start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -124,33 +157,54 @@ class DateUtilsTool:
             end_date = now.replace(hour=23, minute=59, second=59, microsecond=999999)
         
         if as_string:
+            # Convert to UTC for ISO format
+            utc_start = start_date.astimezone(pytz.UTC)
+            utc_end = end_date.astimezone(pytz.UTC)
+            
             return {
                 "start_date": start_date.strftime(self.display_format),
                 "end_date": end_date.strftime(self.display_format),
-                "iso_start_date": start_date.strftime(self.iso_format),
-                "iso_end_date": end_date.strftime(self.iso_format)
+                "iso_start_date": utc_start.strftime(self.iso_format),
+                "iso_end_date": utc_end.strftime(self.iso_format),
+                "timezone": timezone or self.default_timezone
             }
         else:
             return {
                 "start_date": start_date,
-                "end_date": end_date
+                "end_date": end_date,
+                "timezone": timezone or self.default_timezone
             }
     
-    def format_date_for_display(self, date_obj: datetime) -> str:
+    def format_date_for_display(self, date_obj: datetime, timezone: Optional[str] = None) -> str:
         """
-        Format a datetime object for display.
+        Format a datetime object for display in the specified timezone.
         
         Args:
             date_obj (datetime): Datetime object to format
+            timezone (str, optional): Timezone to use for display
             
         Returns:
             str: Formatted date string
         """
+        # Ensure the datetime is timezone-aware
+        if date_obj.tzinfo is None:
+            date_obj = pytz.UTC.localize(date_obj)
+        
+        # Convert to the specified timezone if provided
+        if timezone:
+            try:
+                tz = pytz.timezone(timezone)
+                date_obj = date_obj.astimezone(tz)
+            except pytz.exceptions.UnknownTimeZoneError:
+                # Fall back to default timezone if the specified one is invalid
+                tz = pytz.timezone(self.default_timezone)
+                date_obj = date_obj.astimezone(tz)
+        
         return date_obj.strftime(self.display_format)
     
     def format_date_for_api(self, date_obj: datetime) -> str:
         """
-        Format a datetime object for API use (ISO format).
+        Format a datetime object for API use (ISO format in UTC).
         
         Args:
             date_obj (datetime): Datetime object to format
@@ -158,38 +212,69 @@ class DateUtilsTool:
         Returns:
             str: Formatted date string in ISO format
         """
+        # Ensure the datetime is timezone-aware
+        if date_obj.tzinfo is None:
+            date_obj = pytz.UTC.localize(date_obj)
+        else:
+            # Convert to UTC
+            date_obj = date_obj.astimezone(pytz.UTC)
+        
         return date_obj.strftime(self.iso_format)
     
-    def parse_date_string(self, date_string: str, include_time: bool = False) -> Optional[datetime]:
+    def parse_date_string(self, date_string: str, include_time: bool = False, 
+                          timezone: Optional[str] = None) -> Optional[datetime]:
         """
-        Parse a date string into a datetime object.
+        Parse a date string into a timezone-aware datetime object.
         
         Args:
             date_string (str): Date string to parse
             include_time (bool): Whether the string includes time information
+            timezone (str, optional): Timezone to use if the string doesn't specify one
             
         Returns:
-            datetime or None: Parsed datetime object or None if failed
+            datetime or None: Parsed timezone-aware datetime object or None if failed
         """
+        # Get the timezone object
+        tz_name = timezone or self.default_timezone
+        try:
+            tz = pytz.timezone(tz_name)
+        except pytz.exceptions.UnknownTimeZoneError:
+            # Fall back to default timezone if the specified one is invalid
+            tz = pytz.timezone(self.default_timezone)
+        
         # First, try to use dateutil parser which handles ISO 8601 well
         try:
             # Handle ISO 8601 with Z timezone indicator
             if 'Z' in date_string:
                 # Replace Z with +00:00 for ISO format compatibility
                 clean_date_string = date_string.replace('Z', '+00:00')
-                return dateutil_parser.parse(clean_date_string)
+                dt = dateutil_parser.parse(clean_date_string)
+                # If the parsed datetime is naive, assume UTC
+                if dt.tzinfo is None:
+                    dt = pytz.UTC.localize(dt)
+                return dt
             
             # Try dateutil parser for any format
-            return dateutil_parser.parse(date_string)
+            dt = dateutil_parser.parse(date_string)
+            # If the parsed datetime is naive, use the specified timezone
+            if dt.tzinfo is None:
+                dt = tz.localize(dt)
+            return dt
         except (ValueError, TypeError):
             pass
         
         # If dateutil fails, try standard formats
         try:
             if include_time:
-                # Try standard ISO format
-                return datetime.strptime(date_string, self.iso_format)
-            return datetime.strptime(date_string, self.display_format)
+                # Try standard ISO format (assumes UTC)
+                dt = datetime.strptime(date_string, self.iso_format)
+                dt = pytz.UTC.localize(dt)
+                return dt
+            
+            # For date-only formats, use the specified timezone
+            dt = datetime.strptime(date_string, self.display_format)
+            dt = tz.localize(dt.replace(hour=12))  # Use noon to avoid DST issues
+            return dt
         except ValueError:
             # Try different common formats if the standard format doesn't work
             formats = [
@@ -208,7 +293,14 @@ class DateUtilsTool:
             
             for fmt in formats:
                 try:
-                    return datetime.strptime(date_string, fmt)
+                    dt = datetime.strptime(date_string, fmt)
+                    # For formats with time, assume UTC if no timezone info
+                    if 'T' in fmt or ':' in fmt:
+                        dt = pytz.UTC.localize(dt)
+                    else:
+                        # For date-only formats, use the specified timezone
+                        dt = tz.localize(dt.replace(hour=12))  # Use noon to avoid DST issues
+                    return dt
                 except ValueError:
                     continue
             
@@ -216,45 +308,69 @@ class DateUtilsTool:
     
     def add_days_to_date(self, date_obj: datetime, days: int) -> datetime:
         """
-        Add days to a date.
+        Add days to a date, preserving timezone information.
         
         Args:
             date_obj (datetime): Base datetime object
             days (int): Number of days to add (can be negative)
             
         Returns:
-            datetime: New datetime object
+            datetime: New datetime object with same timezone
         """
+        # Ensure the datetime is timezone-aware
+        if date_obj.tzinfo is None:
+            date_obj = pytz.timezone(self.default_timezone).localize(date_obj)
+        
         return date_obj + timedelta(days=days)
     
-    def date_to_string(self, date_obj: datetime, include_time: bool = False) -> str:
+    def date_to_string(self, date_obj: datetime, include_time: bool = False, 
+                       timezone: Optional[str] = None) -> str:
         """
-        Convert a datetime object to a string.
+        Convert a datetime object to a string in the specified timezone.
         
         Args:
             date_obj (datetime): Datetime object to convert
             include_time (bool): Include time in output string
+            timezone (str, optional): Timezone to use for the string representation
             
         Returns:
             str: Formatted date string
         """
+        # Ensure the datetime is timezone-aware
+        if date_obj.tzinfo is None:
+            date_obj = pytz.UTC.localize(date_obj)
+        
+        # Convert to the specified timezone if provided
+        if timezone:
+            try:
+                tz = pytz.timezone(timezone)
+                date_obj = date_obj.astimezone(tz)
+            except pytz.exceptions.UnknownTimeZoneError:
+                # Fall back to default timezone if the specified one is invalid
+                tz = pytz.timezone(self.default_timezone)
+                date_obj = date_obj.astimezone(tz)
+        
         if include_time:
-            return date_obj.strftime(self.iso_format)
+            # For ISO format, convert to UTC
+            utc_date = date_obj.astimezone(pytz.UTC)
+            return utc_date.strftime(self.iso_format)
         return date_obj.strftime(self.display_format)
     
-    def get_relative_date(self, reference: str = "today", offset_days: int = 0) -> Dict[str, Any]:
+    def get_relative_date(self, reference: str = "today", offset_days: int = 0, 
+                          timezone: Optional[str] = None) -> Dict[str, Any]:
         """
-        Get a date relative to a reference point with an offset.
+        Get a date relative to a reference point with an offset in the specified timezone.
         
         Args:
             reference (str): Reference point ('today', 'tomorrow', 'yesterday', 'start_of_week', etc.)
             offset_days (int): Number of days to offset (can be negative)
+            timezone (str, optional): Timezone to use for the calculation
             
         Returns:
             dict: Dictionary containing date information
         """
-        # Get the reference date
-        now = datetime.now()
+        # Get the reference date in the specified timezone
+        now = self.get_current_date(as_string=False, timezone=timezone)
         
         if reference == "today":
             ref_date = now
@@ -282,62 +398,73 @@ class DateUtilsTool:
         # Apply offset
         result_date = ref_date + timedelta(days=offset_days)
         
+        # Get the timezone name
+        tz_name = timezone or self.default_timezone
+        
         # Format date for response
         return {
-            "date": self.date_to_string(result_date),
-            "iso_date": self.date_to_string(result_date, include_time=True),
+            "date": self.date_to_string(result_date, timezone=tz_name),
+            "iso_date": self.date_to_string(result_date, include_time=True, timezone=tz_name),
             "day_of_week": result_date.strftime("%A"),
             "month": result_date.strftime("%B"),
-            "year": result_date.year
+            "year": result_date.year,
+            "timezone": tz_name
         }
     
-    def normalize_date_string(self, date_string: str) -> Optional[str]:
+    def normalize_date_string(self, date_string: str, timezone: Optional[str] = None) -> Optional[str]:
         """
-        Normalize a date string to ISO format, ensuring it uses the current year
+        Normalize a date string to ISO format in UTC, ensuring it uses the current year
         if no year is specified or the year is in the past.
         
         Args:
             date_string (str): Date string to normalize
+            timezone (str, optional): Timezone to use for parsing relative dates
             
         Returns:
             str or None: Normalized date string in ISO format or None if parsing failed
         """
+        # Get current time in the specified timezone
+        now = self.get_current_date(as_string=False, timezone=timezone)
+        
         # Special handling for ISO 8601 format with or without Z
         iso_pattern = r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|(?:[+-]\d{2}:\d{2}))?$'
         if re.match(iso_pattern, date_string):
             try:
-                # For ISO format, just ensure it's in the future
-                parsed_date = self.parse_date_string(date_string, include_time=True)
+                # For ISO format, parse with timezone awareness
+                parsed_date = self.parse_date_string(date_string, include_time=True, timezone=timezone)
                 if parsed_date:
                     # Ensure the date is not in the past
-                    now = datetime.now()
                     if parsed_date.year < now.year:
                         # Update to current year
                         try:
-                            parsed_date = parsed_date.replace(year=now.year)
+                            # Create a new datetime with the updated year
+                            current_tz = parsed_date.tzinfo
+                            naive_date = parsed_date.replace(tzinfo=None, year=now.year)
+                            parsed_date = current_tz.localize(naive_date)
+                            
                             # If this date is still in the past (e.g., earlier in the current year),
                             # move to next year
                             if parsed_date < now:
-                                parsed_date = parsed_date.replace(year=now.year + 1)
+                                naive_date = parsed_date.replace(tzinfo=None, year=now.year + 1)
+                                parsed_date = current_tz.localize(naive_date)
                         except ValueError:
                             # Handle February 29 in non-leap years
                             if parsed_date.month == 2 and parsed_date.day == 29 and not calendar.isleap(now.year):
-                                parsed_date = datetime(now.year, 3, 1, 
-                                                      parsed_date.hour, parsed_date.minute, parsed_date.second)
+                                naive_date = datetime(now.year, 3, 1, 
+                                                     parsed_date.hour, parsed_date.minute, parsed_date.second)
+                                parsed_date = parsed_date.tzinfo.localize(naive_date)
                     
-                    # Format as ISO string
-                    return parsed_date.strftime(self.iso_format)
+                    # Format as ISO string in UTC
+                    return self.format_date_for_api(parsed_date)
                 return None
             except Exception:
                 return None
         
         # Try to parse the date string for non-ISO formats
-        parsed_date = self.parse_date_string(date_string)
+        parsed_date = self.parse_date_string(date_string, timezone=timezone)
         
         if parsed_date is None:
             # Handle relative date terms
-            now = datetime.now()
-            
             if date_string.lower() in ["today", "now"]:
                 parsed_date = now
             elif date_string.lower() == "tomorrow":
@@ -348,10 +475,12 @@ class DateUtilsTool:
                 parsed_date = now + timedelta(days=7)
             elif "next" in date_string.lower() and "month" in date_string.lower():
                 # Move to the next month
+                current_tz = now.tzinfo
                 if now.month == 12:
-                    parsed_date = now.replace(year=now.year + 1, month=1)
+                    naive_date = now.replace(tzinfo=None, year=now.year + 1, month=1)
                 else:
-                    parsed_date = now.replace(month=now.month + 1)
+                    naive_date = now.replace(tzinfo=None, month=now.month + 1)
+                parsed_date = current_tz.localize(naive_date)
             else:
                 # Try to extract month and day
                 months = {
@@ -387,7 +516,10 @@ class DateUtilsTool:
                             year = int(year_match.group(1)) if year_match else now.year
                             
                             try:
-                                parsed_date = datetime(year, found_month, day)
+                                # Create a timezone-aware datetime
+                                naive_date = datetime(year, found_month, day, 12, 0, 0)  # Use noon to avoid DST issues
+                                current_tz = now.tzinfo
+                                parsed_date = current_tz.localize(naive_date)
                             except ValueError:
                                 # Invalid date (e.g., February 30)
                                 return None
@@ -396,19 +528,135 @@ class DateUtilsTool:
                     return None
         
         # Ensure the date is not in the past (use current year if it is)
-        now = datetime.now()
         if parsed_date.year < now.year:
             # Update to current year
             try:
-                parsed_date = parsed_date.replace(year=now.year)
+                # Create a new datetime with the updated year
+                current_tz = parsed_date.tzinfo
+                naive_date = parsed_date.replace(tzinfo=None, year=now.year)
+                parsed_date = current_tz.localize(naive_date)
+                
                 # If this date is still in the past (e.g., earlier in the current year),
                 # move to next year
                 if parsed_date < now:
-                    parsed_date = parsed_date.replace(year=now.year + 1)
+                    naive_date = parsed_date.replace(tzinfo=None, year=now.year + 1)
+                    parsed_date = current_tz.localize(naive_date)
             except ValueError:
                 # Handle February 29 in non-leap years
                 if parsed_date.month == 2 and parsed_date.day == 29 and not calendar.isleap(now.year):
-                    parsed_date = datetime(now.year, 3, 1)
+                    naive_date = datetime(now.year, 3, 1, 12, 0, 0)  # Use noon to avoid DST issues
+                    parsed_date = parsed_date.tzinfo.localize(naive_date)
         
-        # Format as ISO string with time
-        return parsed_date.strftime(self.iso_format)
+        # Format as ISO string in UTC
+        return self.format_date_for_api(parsed_date)
+    
+    def get_available_timezones(self) -> Dict[str, Any]:
+        """
+        Get a list of available timezones grouped by region.
+        
+        Returns:
+            dict: Dictionary containing timezone information grouped by region
+        """
+        all_timezones = pytz.all_timezones
+        
+        # Group timezones by region
+        timezone_groups = {}
+        for tz_name in all_timezones:
+            # Split by first slash to get region
+            parts = tz_name.split('/', 1)
+            region = parts[0]
+            
+            if region not in timezone_groups:
+                timezone_groups[region] = []
+            
+            if len(parts) > 1:
+                timezone_groups[region].append(tz_name)
+            else:
+                # Handle special cases like 'UTC'
+                if 'Other' not in timezone_groups:
+                    timezone_groups['Other'] = []
+                timezone_groups['Other'].append(tz_name)
+        
+        # Add common timezones section
+        common_timezones = [
+            "UTC",
+            "America/New_York",
+            "America/Los_Angeles",
+            "America/Chicago",
+            "Europe/London",
+            "Europe/Paris",
+            "Asia/Tokyo",
+            "Asia/Shanghai",
+            "Australia/Sydney",
+            "Pacific/Auckland"
+        ]
+        timezone_groups['Common'] = [tz for tz in common_timezones if tz in all_timezones]
+        
+        return {
+            "groups": timezone_groups,
+            "current": self.default_timezone,
+            "total_count": len(all_timezones)
+        }
+    
+    def set_default_timezone(self, timezone: str) -> bool:
+        """
+        Set the default timezone for all date operations.
+        
+        Args:
+            timezone (str): Timezone to set as default (e.g., "America/New_York")
+            
+        Returns:
+            bool: True if successful, False if the timezone is invalid
+        """
+        try:
+            pytz.timezone(timezone)
+            self.default_timezone = timezone
+            return True
+        except pytz.exceptions.UnknownTimeZoneError:
+            return False
+    
+    def get_timezone_offset(self, timezone: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get the current offset information for a timezone.
+        
+        Args:
+            timezone (str, optional): Timezone to get offset for
+            
+        Returns:
+            dict: Dictionary containing offset information
+        """
+        # Use the specified timezone or fall back to default
+        tz_name = timezone or self.default_timezone
+        try:
+            tz = pytz.timezone(tz_name)
+        except pytz.exceptions.UnknownTimeZoneError:
+            # Fall back to default timezone if the specified one is invalid
+            tz = pytz.timezone(self.default_timezone)
+            tz_name = self.default_timezone
+        
+        # Get current time in the timezone
+        now = datetime.now(pytz.UTC).astimezone(tz)
+        
+        # Get the offset
+        offset = now.strftime('%z')
+        offset_hours = int(offset[0:3])
+        offset_minutes = int(offset[0] + offset[3:5])
+        
+        # Format for display
+        if offset_hours >= 0:
+            offset_display = f"+{offset_hours}"
+        else:
+            offset_display = f"{offset_hours}"
+        
+        if offset_minutes != 0:
+            offset_display += f":{abs(offset_minutes)}"
+        
+        return {
+            "timezone": tz_name,
+            "offset": offset,
+            "offset_hours": offset_hours,
+            "offset_minutes": offset_minutes,
+            "offset_display": offset_display,
+            "is_dst": now.dst() != timedelta(0),
+            "current_time": now.strftime("%Y-%m-%d %H:%M:%S")
+        }
