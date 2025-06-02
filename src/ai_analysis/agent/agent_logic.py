@@ -540,3 +540,7 @@ Always maintain context between conversation turns.""")
                 "response": f"I encountered an error: {str(e)}",
                 "success": False
             }
+
+
+# Create an instance of AgentManager to be imported by other modules
+agent_manager = AgentManager()
