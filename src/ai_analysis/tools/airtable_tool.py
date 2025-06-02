@@ -75,25 +75,22 @@ class AirtableTool:
             return error_msg
         
         try:
-            # Get all records and filter locally for more flexible searching
-            all_records = self.client.get_all_records()
-            if not all_records:
-                return f"No announcements found matching '{search_text}'."
+            # Escape single quotes in search text to prevent formula syntax errors
+            escaped_search_text = search_text.replace("'", "\\'")
             
-            search_text_lower = search_text.lower()
-            matched_records = []
+            # Create a formula that searches across multiple fields using FIND()
+            # FIND() returns position of substring (1-based) or error if not found
+            # We use OR to check if any field contains the search text
+            formula = (
+                f"OR("
+                f"FIND(LOWER('{escaped_search_text}'), LOWER({{Title}})), "
+                f"FIND(LOWER('{escaped_search_text}'), LOWER({{Description}})), "
+                f"FIND(LOWER('{escaped_search_text}'), LOWER({{SentByUser}}))"
+                f")"
+            )
             
-            for record in all_records:
-                fields = record.get("fields", {})
-                title = fields.get("Title", "").lower()
-                description = fields.get("Description", "").lower()
-                sender = fields.get("SentByUser", "").lower()
-                
-                # Check if the search text matches any of the fields
-                if (search_text_lower in title or 
-                    search_text_lower in description or 
-                    search_text_lower in sender):
-                    matched_records.append(record)
+            # Use native Airtable filtering instead of fetching all records
+            matched_records = self.client.get_records_with_formula(formula)
             
             if not matched_records:
                 return f"No announcements found matching '{search_text}'."
@@ -120,20 +117,14 @@ class AirtableTool:
             return {"count": 0, "announcements": [], "error": error_msg}
         
         try:
-            # Get all records and filter locally
-            all_records = self.client.get_all_records()
-            if not all_records:
-                return {"count": 0, "announcements": [], "message": f"No announcements found from sender '{sender_name}'."}
+            # Escape single quotes in sender name to prevent formula syntax errors
+            escaped_sender_name = sender_name.replace("'", "\\'")
             
-            sender_name_lower = sender_name.lower()
-            matched_records = []
+            # Create a formula that searches for the sender name in the SentByUser field
+            formula = f"FIND(LOWER('{escaped_sender_name}'), LOWER({{SentByUser}}))"
             
-            for record in all_records:
-                fields = record.get("fields", {})
-                sender = fields.get("SentByUser", "").lower()
-                
-                if sender_name_lower in sender:
-                    matched_records.append(record)
+            # Use native Airtable filtering instead of fetching all records
+            matched_records = self.client.get_records_with_formula(formula)
             
             announcements = [record["fields"] for record in matched_records if "fields" in record]
             
@@ -166,11 +157,6 @@ class AirtableTool:
             return {"count": 0, "announcements": [], "error": error_msg}
         
         try:
-            # Get all announcements first
-            all_records = self.client.get_all_records()
-            if not all_records:
-                return {"count": 0, "announcements": [], "message": "No announcements found."}
-            
             # Parse the date query
             date_query = date_query.lower().strip()
             
@@ -190,10 +176,17 @@ class AirtableTool:
                     else:
                         end_date = datetime(current_year, month_num + 1, 1).replace(tzinfo=dateutil.tz.UTC)
                     
-                    # Filter records by this date range
-                    filtered_records = self._filter_records_by_date_range(all_records, start_date, end_date)
+                    # Format dates for Airtable formula
+                    start_date_str = start_date.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                    end_date_str = end_date.strftime('%Y-%m-%dT%H:%M:%S.000Z')
                     
-                    announcements = [record["fields"] for record in filtered_records if "fields" in record]
+                    # Create formula for date range filtering
+                    formula = f"AND(IS_AFTER({{SentTime}}, '{start_date_str}'), IS_BEFORE({{SentTime}}, '{end_date_str}'))"
+                    
+                    # Use native Airtable filtering
+                    matched_records = self.client.get_records_with_formula(formula)
+                    
+                    announcements = [record["fields"] for record in matched_records if "fields" in record]
                     return {
                         "count": len(announcements),
                         "announcements": announcements,
@@ -209,9 +202,17 @@ class AirtableTool:
                 start_date = start_date.replace(tzinfo=dateutil.tz.UTC)
                 end_date = end_date.replace(tzinfo=dateutil.tz.UTC)
                 
-                filtered_records = self._filter_records_by_date_range(all_records, start_date, end_date)
+                # Format dates for Airtable formula
+                start_date_str = start_date.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                end_date_str = end_date.strftime('%Y-%m-%dT%H:%M:%S.000Z')
                 
-                announcements = [record["fields"] for record in filtered_records if "fields" in record]
+                # Create formula for date range filtering
+                formula = f"AND(IS_AFTER({{SentTime}}, '{start_date_str}'), IS_BEFORE({{SentTime}}, '{end_date_str}'))"
+                
+                # Use native Airtable filtering
+                matched_records = self.client.get_records_with_formula(formula)
+                
+                announcements = [record["fields"] for record in matched_records if "fields" in record]
                 return {
                     "count": len(announcements),
                     "announcements": announcements,
@@ -225,9 +226,18 @@ class AirtableTool:
                 single_date = single_date.replace(tzinfo=dateutil.tz.UTC)
                 # For a single date, get announcements from that day
                 next_day = single_date + timedelta(days=1)
-                filtered_records = self._filter_records_by_date_range(all_records, single_date, next_day)
                 
-                announcements = [record["fields"] for record in filtered_records if "fields" in record]
+                # Format dates for Airtable formula
+                start_date_str = single_date.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                end_date_str = next_day.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                
+                # Create formula for date range filtering
+                formula = f"AND(IS_AFTER({{SentTime}}, '{start_date_str}'), IS_BEFORE({{SentTime}}, '{end_date_str}'))"
+                
+                # Use native Airtable filtering
+                matched_records = self.client.get_records_with_formula(formula)
+                
+                announcements = [record["fields"] for record in matched_records if "fields" in record]
                 return {
                     "count": len(announcements),
                     "announcements": announcements,
