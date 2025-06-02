@@ -121,6 +121,36 @@ class AirtableClient:
             logger.error(f"Error retrieving records from Airtable: {str(e)}", exc_info=True)
             return []
     
+    def get_records_with_formula(self, formula: str, sort_field: str = None, sort_direction: str = "desc") -> List[Dict[str, Any]]:
+        """
+        Get records from Airtable using a formula filter.
+        
+        Args:
+            formula: Airtable formula string for filtering
+            sort_field: Optional field to sort by
+            sort_direction: Sort direction ('asc' or 'desc')
+            
+        Returns:
+            List of matching records
+        """
+        if not self.airtable:
+            logger.error("Airtable connection not initialized")
+            return []
+        
+        try:
+            # Set up sorting if specified
+            sort_param = None
+            if sort_field:
+                sort_param = [(sort_field, sort_direction)]
+            
+            # Get records with formula filter
+            records = self.airtable.get_all(formula=formula, sort=sort_param)
+            logger.info(f"Retrieved {len(records)} records from Airtable using formula: {formula}")
+            return [{"id": record["id"], "fields": record["fields"]} for record in records]
+        except Exception as e:
+            logger.error(f"Error retrieving records with formula from Airtable: {str(e)}", exc_info=True)
+            return []
+    
     def search_records(self, search_text: str) -> List[Dict[str, Any]]:
         """
         Search records in Airtable.
