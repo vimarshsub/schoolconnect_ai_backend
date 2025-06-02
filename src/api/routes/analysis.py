@@ -59,7 +59,7 @@ async def chat(
         # Execute agent with query
         result = agent_manager.execute(request.message, langchain_chat_history)
         
-        agent_response = result.get("output", "Sorry, I didn't get a clear response.")
+        agent_response = result.get("response", "Sorry, I didn't get a clear response.")
         
         # Add assistant response to chat history
         chat_history_manager.add_message(session_id, "assistant", agent_response)
