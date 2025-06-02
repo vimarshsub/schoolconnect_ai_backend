@@ -138,13 +138,15 @@ class AirtableClient:
             return []
         
         try:
-            # Set up sorting if specified
-            sort_param = None
+            # Prepare parameters for get_all
+            params = {"formula": formula}
+            
+            # Add sorting only if sort_field is specified
             if sort_field:
-                sort_param = [(sort_field, sort_direction)]
+                params["sort"] = [(sort_field, sort_direction)]
             
             # Get records with formula filter
-            records = self.airtable.get_all(formula=formula, sort=sort_param)
+            records = self.airtable.get_all(**params)
             logger.info(f"Retrieved {len(records)} records from Airtable using formula: {formula}")
             return [{"id": record["id"], "fields": record["fields"]} for record in records]
         except Exception as e:
