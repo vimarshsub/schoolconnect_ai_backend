@@ -4,8 +4,7 @@ Core agent logic for AI-powered announcement analysis.
 
 import os
 import logging
-import re
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 from langchain.chat_models import ChatOpenAI
 from langchain.agents import initialize_agent, AgentType
 from langchain.tools import Tool, StructuredTool
@@ -17,7 +16,6 @@ from src.ai_analysis.tools.airtable_tool import AirtableTool
 from src.ai_analysis.tools.openai_tool import OpenAIDocumentAnalysisTool
 from src.ai_analysis.tools.google_calendar_tool import GoogleCalendarTool
 from src.ai_analysis.tools.date_utils_tool import DateUtilsTool
-from src.ai_analysis.tools.announcement_date_extractor import AnnouncementDateExtractor
 
 logger = logging.getLogger("schoolconnect_ai")
 
@@ -38,25 +36,10 @@ class CalendarEventInput(BaseModel):
     reminder_minutes: Optional[int] = Field(None, description="Reminder time in minutes before the event")
     timezone: Optional[str] = Field(None, description="Timezone for the event (e.g., 'America/New_York', 'UTC')")
 
-class CalendarEventFromAnnouncementInput(BaseModel):
-    announcement_query: str = Field(description="Search term to find the announcement")
-    title: Optional[str] = Field(None, description="Optional custom title for the event (if not provided, will use announcement title)")
-    description: Optional[str] = Field(None, description="Optional custom description for the event")
-    location: Optional[str] = Field(None, description="Optional location for the event")
-    attendees: Optional[str] = Field(None, description="Optional comma-separated list of attendee email addresses")
-    reminder_minutes: Optional[int] = Field(None, description="Optional reminder time in minutes before the event")
-    timezone: Optional[str] = Field(None, description="Timezone for the event (e.g., 'America/New_York', 'UTC')")
-
 class CalendarReminderInput(BaseModel):
     title: str = Field(description="Title of the reminder")
     due_date: str = Field(description="Due date in ISO format (YYYY-MM-DDTHH:MM:SS)")
     description: Optional[str] = Field(None, description="Description of the reminder")
-    timezone: Optional[str] = Field(None, description="Timezone for the reminder (e.g., 'America/New_York', 'UTC')")
-
-class CalendarReminderFromAnnouncementInput(BaseModel):
-    announcement_query: str = Field(description="Search term to find the announcement")
-    title: Optional[str] = Field(None, description="Optional custom title for the reminder (if not provided, will use announcement title)")
-    description: Optional[str] = Field(None, description="Optional custom description for the reminder")
     timezone: Optional[str] = Field(None, description="Timezone for the reminder (e.g., 'America/New_York', 'UTC')")
 
 class CalendarSearchInput(BaseModel):
@@ -166,82 +149,6 @@ class AgentManager:
             reminder_minutes=reminder_minutes
         )
     
-    def _create_calendar_event_from_announcement_wrapper(self, announcement_query: str,
-                                               title: Optional[str] = None,
-                                               description: Optional[str] = None,
-                                               location: Optional[str] = None,
-                                               attendees: Optional[str] = None,
-                                               reminder_minutes: Optional[int] = None,
-                                               timezone: Optional[str] = None) -> str:
-        """
-        Create a calendar event based on an announcement.
-        
-        Args:
-            announcement_query: Search term to find the announcement
-            title: Optional custom title for the event
-            description: Optional custom description for the event
-            location: Optional location for the event
-            attendees: Optional comma-separated list of attendee email addresses
-            reminder_minutes: Optional reminder time in minutes before the event
-            timezone: Timezone for date interpretation
-            
-        Returns:
-            Success or error message
-        """
-        # Use provided timezone or fall back to user's default
-        tz = timezone or self.user_timezone
-        
-        # Get current date for reference
-        current_date = self.date_utils.get_current_datetime(timezone=tz)
-        
-        # Step 1: Search for the announcement
-        announcements = self.airtable_tool.search_announcements(announcement_query)
-        
-        # Check if we found any announcements
-        if not announcements or isinstance(announcements, str):
-            return f"Could not find any announcements matching '{announcement_query}'. Please try a different search term."
-        
-        # Get the first matching announcement
-        announcement = announcements[0]
-        
-        # Step 2: Extract the date from the announcement
-        event_date = AnnouncementDateExtractor.extract_date_from_announcement(
-            announcement, 
-            current_date=current_date,
-            timezone=tz
-        )
-        
-        # If no date found, return an error
-        if not event_date:
-            return (f"Could not find a date in the announcement '{announcement.get('Title', 'Unknown')}'. "
-                   f"Please specify a date manually.")
-        
-        # Step 3: Use the announcement details for the event
-        event_title = title or announcement.get('Title', 'Event from announcement')
-        event_description = description or announcement.get('Description', '')
-        
-        # Add source information to the description
-        if event_description:
-            event_description += f"\n\nSource: Announcement '{announcement.get('Title', 'Unknown')}'"
-        else:
-            event_description = f"Source: Announcement '{announcement.get('Title', 'Unknown')}'"
-        
-        # Step 4: Create the calendar event
-        # Convert attendees from string to list if provided
-        attendees_list = None
-        if attendees:
-            attendees_list = [email.strip() for email in attendees.split(',')]
-        
-        return self.calendar_tool.create_event(
-            title=event_title,
-            start_time=event_date,
-            end_time=None,  # End time not specified in announcements typically
-            description=event_description,
-            location=location,
-            attendees=attendees_list,
-            reminder_minutes=reminder_minutes
-        )
-    
     def _create_calendar_reminder_wrapper(self, title: str, due_date: str, 
                                  description: Optional[str] = None,
                                  timezone: Optional[str] = None) -> str:
@@ -269,67 +176,6 @@ class AgentManager:
             title=title,
             due_date=normalized_date,
             description=description
-        )
-    
-    def _create_calendar_reminder_from_announcement_wrapper(self, announcement_query: str,
-                                                  title: Optional[str] = None,
-                                                  description: Optional[str] = None,
-                                                  timezone: Optional[str] = None) -> str:
-        """
-        Create a calendar reminder based on an announcement.
-        
-        Args:
-            announcement_query: Search term to find the announcement
-            title: Optional custom title for the reminder
-            description: Optional custom description for the reminder
-            timezone: Timezone for date interpretation
-            
-        Returns:
-            Success or error message
-        """
-        # Use provided timezone or fall back to user's default
-        tz = timezone or self.user_timezone
-        
-        # Get current date for reference
-        current_date = self.date_utils.get_current_datetime(timezone=tz)
-        
-        # Step 1: Search for the announcement
-        announcements = self.airtable_tool.search_announcements(announcement_query)
-        
-        # Check if we found any announcements
-        if not announcements or isinstance(announcements, str):
-            return f"Could not find any announcements matching '{announcement_query}'. Please try a different search term."
-        
-        # Get the first matching announcement
-        announcement = announcements[0]
-        
-        # Step 2: Extract the date from the announcement
-        due_date = AnnouncementDateExtractor.extract_date_from_announcement(
-            announcement, 
-            current_date=current_date,
-            timezone=tz
-        )
-        
-        # If no date found, return an error
-        if not due_date:
-            return (f"Could not find a date in the announcement '{announcement.get('Title', 'Unknown')}'. "
-                   f"Please specify a date manually.")
-        
-        # Step 3: Use the announcement details for the reminder
-        reminder_title = title or announcement.get('Title', 'Reminder from announcement')
-        reminder_description = description or announcement.get('Description', '')
-        
-        # Add source information to the description
-        if reminder_description:
-            reminder_description += f"\n\nSource: Announcement '{announcement.get('Title', 'Unknown')}'"
-        else:
-            reminder_description = f"Source: Announcement '{announcement.get('Title', 'Unknown')}'"
-        
-        # Step 4: Create the calendar reminder
-        return self.calendar_tool.create_reminder(
-            title=reminder_title,
-            due_date=due_date,
-            description=reminder_description
         )
     
     def _search_calendar_events_wrapper(self, query: Optional[str] = None, 
@@ -539,12 +385,6 @@ class AgentManager:
                 args_schema=CalendarEventInput
             ),
             StructuredTool.from_function(
-                func=self._create_calendar_event_from_announcement_wrapper,
-                name="create_calendar_event_from_announcement",
-                description=f"Creates a new event in Google Calendar based on an announcement. The event date will be extracted from the announcement content. You must specify the announcement search term to find the relevant announcement.",
-                args_schema=CalendarEventFromAnnouncementInput
-            ),
-            StructuredTool.from_function(
                 func=self._search_calendar_events_wrapper,
                 name="search_calendar_events",
                 description=f"Searches for events in Google Calendar with timezone support (default: {self.user_timezone}). You can specify a search term, date range, and maximum number of results to return.",
@@ -555,12 +395,6 @@ class AgentManager:
                 name="create_calendar_reminder",
                 description=f"Creates a new reminder in Google Calendar with timezone support (default: {self.user_timezone}). You must specify the title and due date. Optionally specify a description.",
                 args_schema=CalendarReminderInput
-            ),
-            StructuredTool.from_function(
-                func=self._create_calendar_reminder_from_announcement_wrapper,
-                name="create_calendar_reminder_from_announcement",
-                description=f"Creates a new reminder in Google Calendar based on an announcement. The reminder date will be extracted from the announcement content. You must specify the announcement search term to find the relevant announcement.",
-                args_schema=CalendarReminderFromAnnouncementInput
             ),
             StructuredTool.from_function(
                 func=self._delete_calendar_event_wrapper,
@@ -583,11 +417,6 @@ When creating calendar events or reminders:
 3. Ensure all dates are in the future and use the correct year (2025)
 4. Format dates in ISO format (YYYY-MM-DDTHH:MM:SSZ)
 5. Consider the user's timezone ({self.user_timezone}) when interpreting time references
-
-When a user asks to create an event or reminder for a specific announcement:
-1. Use create_calendar_event_from_announcement or create_calendar_reminder_from_announcement
-2. These tools will automatically search for the announcement and extract the date from its content
-3. The event or reminder will be created with the date from the announcement, not a default date like "tomorrow"
 
 For calendar-related tasks, help users create, find, and manage their events and reminders effectively. You can also provide date calculations and ranges when users need to know about specific time periods.
 
