@@ -8,6 +8,7 @@ import logging
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+from src.api import setup_middleware
 
 # Load environment variables
 load_dotenv()
@@ -54,6 +55,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Set up authentication middleware
+setup_middleware(app)
 
 # Add a direct health check endpoint at the root level
 @app.get("/health")

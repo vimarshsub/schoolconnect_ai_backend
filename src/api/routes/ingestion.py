@@ -3,7 +3,7 @@ API routes for data ingestion operations.
 """
 
 import os
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 
@@ -34,17 +34,49 @@ last_sync_status = {
     "timestamp": None
 }
 
+# Helper function to check if API key is valid
+async def get_current_user_or_api_key(request: Request):
+    """
+    Get current user from token or validate API key.
+    Used for endpoints that support both authentication methods.
+    
+    Args:
+        request: FastAPI request
+        
+    Returns:
+        User object
+        
+    Raises:
+        HTTPException: If authentication fails
+    """
+    # Check for API key in query parameters
+    api_key = request.query_params.get("api_key")
+    if api_key:
+        # Validate API key
+        settings = get_settings()
+        if api_key == settings.CRON_API_KEY:
+            # API key is valid, return a minimal user object
+            return {"username": "api_key_user"}
+    
+    # If no valid API key, fall back to token authentication
+    return await get_current_user(request)
+
 @router.post("/sync", response_model=SyncResponse)
 async def sync_data(
-    request: SyncRequest,
+    request: Request,
+    sync_request: SyncRequest,
     background_tasks: BackgroundTasks,
-    current_user = Depends(get_current_user)
+    current_user = Depends(get_current_user_or_api_key)
 ):
     """
     Manually trigger data synchronization from SchoolConnect to Airtable.
     
     If username and password are not provided in the request, the system will use
     the credentials from environment variables (SCHOOLCONNECT_USERNAME and SCHOOLCONNECT_PASSWORD).
+    
+    Authentication can be done either via:
+    - JWT token in Authorization header
+    - API key in query parameter (?api_key=YOUR_API_KEY)
     """
     if last_sync_status["in_progress"]:
         return SyncResponse(
@@ -57,8 +89,8 @@ async def sync_data(
     settings = get_settings()
     
     # Use credentials from request if provided, otherwise use from environment
-    username = request.username if request.username else settings.SCHOOLCONNECT_USERNAME
-    password = request.password if request.password else settings.SCHOOLCONNECT_PASSWORD
+    username = sync_request.username if sync_request.username else settings.SCHOOLCONNECT_USERNAME
+    password = sync_request.password if sync_request.password else settings.SCHOOLCONNECT_PASSWORD
     
     # Validate credentials
     if not username or not password:
@@ -73,7 +105,7 @@ async def sync_data(
         run_sync_task,
         username,
         password,
-        request.max_pages
+        sync_request.max_pages
     )
     
     return SyncResponse(
@@ -150,6 +182,66 @@ async def update_config(
         config["schedule_cron"] = request.schedule_cron
     
     return ConfigResponse(**config)
+
+@router.post("/cron", response_model=SyncResponse)
+async def cron_sync_data(
+    background_tasks: BackgroundTasks,
+    api_key: str = None
+):
+    """
+    Special endpoint for scheduled cron jobs to trigger data synchronization.
+    This endpoint uses environment variables for SchoolConnect credentials
+    and requires an API key for authentication.
+    
+    Args:
+        background_tasks: FastAPI background tasks
+        api_key: API key for authentication (passed as query parameter)
+        
+    Returns:
+        SyncResponse
+    """
+    # Get settings
+    settings = get_settings()
+    
+    # Validate API key (compare with environment variable)
+    if not api_key or api_key != settings.CRON_API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing API key"
+        )
+    
+    if last_sync_status["in_progress"]:
+        return SyncResponse(
+            success=False,
+            message="A synchronization job is already in progress",
+            details={"status": "in_progress"}
+        )
+    
+    # Use credentials from environment variables
+    username = settings.SCHOOLCONNECT_USERNAME
+    password = settings.SCHOOLCONNECT_PASSWORD
+    
+    # Validate credentials
+    if not username or not password:
+        return SyncResponse(
+            success=False,
+            message="SchoolConnect credentials not configured in environment variables",
+            details={"status": "error", "error": "missing_credentials"}
+        )
+    
+    # Start sync in background
+    background_tasks.add_task(
+        run_sync_task,
+        username,
+        password,
+        config["max_pages"]  # Use the configured max_pages
+    )
+    
+    return SyncResponse(
+        success=True,
+        message="Cron-triggered synchronization job started",
+        details={"status": "started"}
+    )
 
 async def run_sync_task(username: str, password: str, max_pages: int):
     """
