@@ -362,7 +362,7 @@ class AgentManager:
             StructuredTool.from_function(
                 func=self._get_relative_date_wrapper,
                 name="get_relative_date",
-                description=f"Get a date relative to a reference point with an offset in days in the specified timezone (default: {self.user_timezone}). For example, 'tomorrow' would be ('today', 1).",
+                description=f"Get a date relative to a reference point with an offset in the specified timezone (default: {self.user_timezone}).",
                 args_schema=RelativeDateInput
             ),
             StructuredTool.from_function(
@@ -381,122 +381,138 @@ class AgentManager:
             StructuredTool.from_function(
                 func=self._create_calendar_event_wrapper,
                 name="create_calendar_event",
-                description=f"Creates a new event in Google Calendar with timezone support (default: {self.user_timezone}). You must specify the title and start time. Optionally specify end time, description, location, attendees, and reminder time.",
+                description=f"Create a calendar event with the specified details in the specified timezone (default: {self.user_timezone}).",
                 args_schema=CalendarEventInput
-            ),
-            StructuredTool.from_function(
-                func=self._search_calendar_events_wrapper,
-                name="search_calendar_events",
-                description=f"Searches for events in Google Calendar with timezone support (default: {self.user_timezone}). You can specify a search term, date range, and maximum number of results to return.",
-                args_schema=CalendarSearchInput
             ),
             StructuredTool.from_function(
                 func=self._create_calendar_reminder_wrapper,
                 name="create_calendar_reminder",
-                description=f"Creates a new reminder in Google Calendar with timezone support (default: {self.user_timezone}). You must specify the title and due date. Optionally specify a description.",
+                description=f"Create a calendar reminder with the specified details in the specified timezone (default: {self.user_timezone}).",
                 args_schema=CalendarReminderInput
+            ),
+            StructuredTool.from_function(
+                func=self._search_calendar_events_wrapper,
+                name="search_calendar_events",
+                description=f"Search for calendar events with the specified criteria in the specified timezone (default: {self.user_timezone}).",
+                args_schema=CalendarSearchInput
             ),
             StructuredTool.from_function(
                 func=self._delete_calendar_event_wrapper,
                 name="delete_calendar_event",
-                description="Deletes an event from Google Calendar. You must specify the event ID.",
+                description="Delete a calendar event with the specified ID.",
                 args_schema=CalendarDeleteInput
             )
         ]
         
-        # Create system message using the proper format
-        system_message = SystemMessage(content=f"""You are a helpful assistant that can interact with Airtable, analyze documents, manage Google Calendar, and perform date calculations. 
-                
-The current year is 2025. Always use the current date tools to get accurate date information when working with calendar events or reminders.
+        # Define system message
+        system_message = SystemMessage(
+            content="""You are an AI assistant for SchoolConnect, a platform that helps parents stay informed about school announcements and activities.
 
-Your default timezone is set to {self.user_timezone}. When users mention dates or times without specifying a timezone, assume they are referring to their local time in {self.user_timezone}.
+Your primary responsibilities are:
+1. Help users find and understand school announcements
+2. Assist with calendar management for school events
+3. Analyze documents like newsletters and permission slips
+4. Provide helpful information about school activities
 
-When creating calendar events or reminders:
-1. Always check the current date first using get_current_date
-2. For relative dates like "tomorrow" or "next week", use get_relative_date
-3. Ensure all dates are in the future and use the correct year (2025)
-4. Format dates in ISO format (YYYY-MM-DDTHH:MM:SSZ)
-5. Consider the user's timezone ({self.user_timezone}) when interpreting time references
+When searching for announcements:
+- Use the appropriate search tools based on the user's query
+- If the user asks about a specific sender, use search_announcements_by_sender
+- If the user asks about a specific date or time period, use filter_announcements_by_date
+- For general searches, use search_announcements
+- Present results in a clear, organized manner
 
-For calendar-related tasks, help users create, find, and manage their events and reminders effectively. You can also provide date calculations and ranges when users need to know about specific time periods.
+When working with calendar events:
+- Help users create, search, and manage calendar events
+- Use the appropriate timezone for the user (default is America/New_York)
+- Format dates and times in a user-friendly way
+- Confirm details before creating or modifying events
 
-Always maintain context between conversation turns.""")
+When analyzing documents:
+- Use the analyze_document tool with the appropriate analysis type
+- Summarize key information from documents
+- Extract action items and important dates
+- Provide insights about document content
+
+Always be helpful, concise, and focused on school-related information. If you don't know something or can't find the requested information, be honest and suggest alternatives."""
+        )
         
-        # Create agent using the initialize_agent method with proper system message
-        agent_executor = initialize_agent(
-            tools=tools,
-            llm=llm,
+        # Initialize agent
+        agent = initialize_agent(
+            tools,
+            llm,
             agent=AgentType.OPENAI_FUNCTIONS,
             verbose=True,
-            handle_parsing_errors=True,
             agent_kwargs={
-                "system_message": system_message
+                "system_message": system_message,
             }
         )
         
-        return agent_executor
+        return agent
     
-    def _get_and_download_attachment(self, announcement_id: Optional[str] = None, 
-                                    search_term: Optional[str] = None, 
-                                    get_latest: bool = False) -> str:
+    def _get_and_download_attachment(self, query: str = None) -> str:
         """
-        Get and download an attachment from an announcement.
+        Get an attachment from an announcement by ID, search term, or get the latest.
         
         Args:
-            announcement_id: Airtable record ID
-            search_term: Text to search for in Title or Description
-            get_latest: Whether to get the latest announcement
+            query: Announcement ID, search term, or "latest"
             
         Returns:
-            Local file path to the downloaded attachment
+            Local file path of the downloaded attachment
         """
         try:
-            # Get attachment URL and filename
-            result = self.airtable_tool.get_attachment_from_announcement(
-                announcement_id=announcement_id,
-                search_term=search_term,
-                get_latest=get_latest
-            )
+            # If no query, get the latest announcement with attachments
+            if not query or query.lower() == "latest":
+                announcements = self.airtable_tool.get_all_announcements()
+                for announcement in announcements.get("announcements", []):
+                    if announcement.get("Attachments"):
+                        attachment = announcement["Attachments"][0]
+                        return self.airtable_tool.download_attachment(attachment)
+                return "No attachments found in any announcements."
             
-            if isinstance(result, str) and not result.startswith("http"):
-                # This is an error message
-                return result
+            # If query is a numeric ID, get that specific announcement
+            if query.isdigit():
+                announcement = self.airtable_tool.get_announcement_by_id(query)
+                if announcement and announcement.get("Attachments"):
+                    attachment = announcement["Attachments"][0]
+                    return self.airtable_tool.download_attachment(attachment)
+                return f"No attachments found for announcement ID {query}."
             
-            # Download the file
-            url, filename = result
-            local_path = self.airtable_tool.download_file(url, filename)
+            # Otherwise, search for announcements matching the query
+            results = self.airtable_tool.search_announcements(query)
+            for announcement in results.get("announcements", []):
+                if announcement.get("Attachments"):
+                    attachment = announcement["Attachments"][0]
+                    return self.airtable_tool.download_attachment(attachment)
             
-            return local_path
+            return f"No attachments found for announcements matching '{query}'."
         except Exception as e:
             logger.error(f"Error getting attachment: {str(e)}")
             return f"Error getting attachment: {str(e)}"
     
-    def _analyze_document(self, file_path: str, analysis_type: str = "summarize", 
-                         custom_prompt: Optional[str] = None) -> str:
+    def _analyze_document(self, file_path: str, analysis_type: str = "summarize", custom_prompt: str = None) -> str:
         """
         Analyze a document using OpenAI.
         
         Args:
             file_path: Path to the document file
-            analysis_type: Type of analysis to perform
-            custom_prompt: Custom prompt for analysis
+            analysis_type: Type of analysis to perform (summarize, extract_action_items, sentiment, custom)
+            custom_prompt: Custom prompt for analysis (only used if analysis_type is 'custom')
             
         Returns:
-            Analysis result
+            Analysis results
         """
         try:
-            return self.openai_analysis_tool.analyze_document(
-                file_path=file_path,
-                analysis_type=analysis_type,
-                custom_prompt=custom_prompt
-            )
+            if not os.path.exists(file_path):
+                return f"Error: File not found at {file_path}"
+            
+            return self.openai_analysis_tool.analyze_document(file_path, analysis_type, custom_prompt)
         except Exception as e:
             logger.error(f"Error analyzing document: {str(e)}")
             return f"Error analyzing document: {str(e)}"
     
-    def set_user_timezone(self, timezone: str) -> bool:
+    def set_timezone(self, timezone: str) -> bool:
         """
-        Set the user's timezone for all date operations.
+        Set the user's timezone for date calculations.
         
         Args:
             timezone: Timezone to set (e.g., "America/New_York", "UTC")
@@ -524,22 +540,36 @@ Always maintain context between conversation turns.""")
             Agent response
         """
         try:
-            # Check if this is an announcement listing request
-            is_announcement_request = self._is_announcement_listing_request(query)
-            
-            if is_announcement_request:
-                # Handle announcement listing directly without LLM formatting
-                result = self._handle_announcement_request(query)
-                return {
-                    "response": result,
-                    "success": True
-                }
-            
-            # For non-announcement requests, use the LLM agent
+            # Execute the query
             if chat_history:
                 result = self.agent_executor.run(input=query, chat_history=chat_history)
             else:
                 result = self.agent_executor.run(input=query)
+            
+            # Process the result to ensure count matches actual announcements returned
+            # Check if the result contains announcement data with count mismatch
+            if isinstance(result, str) and "announcements" in result and "count" in result:
+                try:
+                    # Try to extract the actual announcements list
+                    import re
+                    import json
+                    
+                    # Look for patterns that indicate announcement data
+                    count_match = re.search(r"'count':\s*(\d+)", result)
+                    announcements_start = result.find("'announcements':")
+                    
+                    if count_match and announcements_start > 0:
+                        # Count the actual number of announcements in the formatted output
+                        announcement_count = result.count("'AnnouncementId':")
+                        original_count = int(count_match.group(1))
+                        
+                        # If there's a mismatch, update the count in the response
+                        if original_count != announcement_count and announcement_count > 0:
+                            logger.info(f"Fixing count mismatch: original={original_count}, actual={announcement_count}")
+                            result = result.replace(f"'count': {original_count}", f"'count': {announcement_count}")
+                            result = result.replace(f"Found {original_count} announcements", f"Found {announcement_count} announcements")
+                except Exception as format_error:
+                    logger.error(f"Error processing announcement count: {str(format_error)}")
             
             return {
                 "response": result,
@@ -551,181 +581,6 @@ Always maintain context between conversation turns.""")
                 "response": f"I encountered an error: {str(e)}",
                 "success": False
             }
-    
-    def _is_announcement_listing_request(self, query: str) -> bool:
-        """
-        Determine if a query is requesting a list of announcements.
-        
-        Args:
-            query: User query
-            
-        Returns:
-            True if this is an announcement listing request
-        """
-        query = query.lower()
-        
-        # Check for common announcement listing patterns
-        announcement_keywords = [
-            "announcements", "announcement", "messages", "message", "updates", "update"
-        ]
-        
-        # Check for listing patterns
-        listing_patterns = [
-            "show me", "get", "list", "find", "search", "what", "any", "are there"
-        ]
-        
-        # Check for time/sender filters
-        filter_patterns = [
-            "from", "by", "sent by", "in", "during", "recent", "latest", "last"
-        ]
-        
-        # Count matches in different categories
-        has_announcement = any(keyword in query for keyword in announcement_keywords)
-        has_listing = any(pattern in query for pattern in listing_patterns)
-        has_filter = any(pattern in query for pattern in filter_patterns)
-        
-        # Determine if this is likely an announcement listing request
-        return has_announcement and (has_listing or has_filter)
-    
-    def _handle_announcement_request(self, query: str) -> str:
-        """
-        Handle announcement listing requests directly without LLM formatting.
-        
-        Args:
-            query: User query
-            
-        Returns:
-            Formatted response with consistent count and announcements
-        """
-        try:
-            # Extract date filter if present
-            date_filter = self._extract_date_filter(query)
-            
-            # Extract sender filter if present
-            sender_filter = self._extract_sender_filter(query)
-            
-            # Get announcements based on filters
-            if date_filter:
-                result = self.airtable_tool.filter_announcements_by_date(date_filter)
-                filter_type = "date"
-                filter_value = date_filter
-            elif sender_filter:
-                result = self.airtable_tool.search_announcements_by_sender(sender_filter)
-                filter_type = "sender"
-                filter_value = sender_filter
-            else:
-                # General search
-                search_terms = self._extract_search_terms(query)
-                result = self.airtable_tool.search_announcements(search_terms)
-                filter_type = "search"
-                filter_value = search_terms
-            
-            # Format the response with consistent count
-            announcements = result.get("announcements", [])
-            count = len(announcements)
-            
-            # Create a nicely formatted response
-            if count == 0:
-                if filter_type == "date":
-                    return f"There are no announcements found for {filter_value}. If you need information on announcements from a different date or a specific topic, feel free to ask!"
-                elif filter_type == "sender":
-                    return f"There are no announcements found from {filter_value}. If you need information on announcements from a different sender or a specific topic, feel free to ask!"
-                else:
-                    return f"There are no announcements found matching '{filter_value}'. If you need information on a different topic, feel free to ask!"
-            
-            # Format the announcements in a readable way
-            formatted_announcements = []
-            for i, announcement in enumerate(announcements, 1):
-                title = announcement.get("Title", "Untitled")
-                sent_time = announcement.get("SentTime", "")
-                sent_by = announcement.get("SentByUser", "Unknown")
-                
-                # Format the date
-                if sent_time:
-                    try:
-                        from datetime import datetime
-                        dt = datetime.fromisoformat(sent_time.replace("Z", "+00:00"))
-                        sent_time = dt.strftime("%B %d, %Y")
-                    except:
-                        pass
-                
-                formatted_announcements.append(f"{i}. **{title}**\n   - **Sent Time:** {sent_time}\n   - **Sent By:** {sent_by}")
-            
-            # Create the final response
-            if filter_type == "date":
-                response = f"I found {count} announcements for {filter_value}:\n\n"
-            elif filter_type == "sender":
-                response = f"I found {count} announcements from {filter_value}:\n\n"
-            else:
-                response = f"I found {count} announcements matching '{filter_value}':\n\n"
-            
-            response += "\n\n".join(formatted_announcements)
-            
-            return response
-        except Exception as e:
-            logger.error(f"Error handling announcement request: {str(e)}")
-            return f"I encountered an error while processing your request: {str(e)}"
-    
-    def _extract_date_filter(self, query: str) -> str:
-        """Extract date filter from query."""
-        query = query.lower()
-        
-        # Common date patterns
-        date_patterns = [
-            r"in (january|february|march|april|may|june|july|august|september|october|november|december)",
-            r"from (january|february|march|april|may|june|july|august|september|october|november|december)",
-            r"during (january|february|march|april|may|june|july|august|september|october|november|december)",
-            r"last (week|month|year)",
-            r"this (week|month|year)",
-            r"today",
-            r"yesterday"
-        ]
-        
-        import re
-        for pattern in date_patterns:
-            match = re.search(pattern, query)
-            if match:
-                return match.group(0)
-        
-        return ""
-    
-    def _extract_sender_filter(self, query: str) -> str:
-        """Extract sender filter from query."""
-        query = query.lower()
-        
-        # Common sender patterns
-        sender_patterns = [
-            r"from ([a-z\s]+)",
-            r"by ([a-z\s]+)",
-            r"sent by ([a-z\s]+)"
-        ]
-        
-        import re
-        for pattern in sender_patterns:
-            match = re.search(pattern, query)
-            if match and "announcements" not in match.group(1) and "message" not in match.group(1):
-                return match.group(1).strip()
-        
-        return ""
-    
-    def _extract_search_terms(self, query: str) -> str:
-        """Extract search terms from query."""
-        # Remove common announcement request phrases
-        query = query.lower()
-        phrases_to_remove = [
-            "show me", "get", "list", "find", "search for", "what are", "are there any",
-            "announcements", "messages", "updates", "about", "related to", "regarding"
-        ]
-        
-        for phrase in phrases_to_remove:
-            query = query.replace(phrase, "")
-        
-        # Clean up and return non-empty search terms
-        search_terms = query.strip()
-        if not search_terms:
-            search_terms = "recent"  # Default to recent if no specific terms
-            
-        return search_terms
 
 
 # Create an instance of AgentManager to be imported by other modules
