@@ -530,6 +530,31 @@ Always maintain context between conversation turns.""")
             else:
                 result = self.agent_executor.run(input=query)
             
+            # Process the result to ensure count matches actual announcements returned
+            # Check if the result contains announcement data with count mismatch
+            if isinstance(result, str) and "announcements" in result and "count" in result:
+                try:
+                    # Try to extract the actual announcements list
+                    import re
+                    import json
+                    
+                    # Look for patterns that indicate announcement data
+                    count_match = re.search(r"'count':\s*(\d+)", result)
+                    announcements_start = result.find("'announcements':")
+                    
+                    if count_match and announcements_start > 0:
+                        # Count the actual number of announcements in the formatted output
+                        announcement_count = result.count("'AnnouncementId':")
+                        original_count = int(count_match.group(1))
+                        
+                        # If there's a mismatch, update the count in the response
+                        if original_count != announcement_count and announcement_count > 0:
+                            logger.info(f"Fixing count mismatch: original={original_count}, actual={announcement_count}")
+                            result = result.replace(f"'count': {original_count}", f"'count': {announcement_count}")
+                            result = result.replace(f"Found {original_count} announcements", f"Found {announcement_count} announcements")
+                except Exception as format_error:
+                    logger.error(f"Error processing announcement count: {str(format_error)}")
+            
             return {
                 "response": result,
                 "success": True
