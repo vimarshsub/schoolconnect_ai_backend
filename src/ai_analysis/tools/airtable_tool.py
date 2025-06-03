@@ -655,50 +655,33 @@ class AirtableTool:
             # Track our filtering steps for the response message
             filter_steps = []
             
-            # Start with all announcements or apply initial filter
-            announcements = []
-            if sender_name:
-                # Start by filtering by sender
-                sender_result = self.search_announcements_by_sender(sender_name)
-                if isinstance(sender_result, dict) and "announcements" in sender_result:
-                    announcements = sender_result["announcements"]
-                    filter_steps.append(f"sender '{sender_name}'")
-                else:
-                    return {"count": 0, "announcements": [], "message": f"No announcements found from sender '{sender_name}'."}
-            elif date_query:
-                # Start by filtering by date
-                date_result = self.filter_announcements_by_date(date_query)
-                if isinstance(date_result, dict) and "announcements" in date_result:
-                    announcements = date_result["announcements"]
-                    filter_steps.append(f"date '{date_query}'")
-                else:
-                    return {"count": 0, "announcements": [], "message": f"No announcements found for date query '{date_query}'."}
-            else:
-                # Start with all announcements if no sender or date filter
-                all_result = self.get_all_announcements()
-                if isinstance(all_result, dict) and "announcements" in all_result:
-                    announcements = all_result["announcements"]
-                else:
-                    return {"count": 0, "announcements": [], "message": "No announcements found."}
+            # Start with all announcements
+            all_result = self.get_all_announcements()
+            if not isinstance(all_result, dict) or "announcements" not in all_result:
+                return {"count": 0, "announcements": [], "message": "No announcements found."}
+                
+            announcements = all_result["announcements"]
             
-            # If we have a text search, filter the current results
-            if search_text and announcements:
+            # Apply sender filter if specified
+            if sender_name:
                 filtered_announcements = []
-                search_text_lower = search_text.lower()
+                sender_name_lower = sender_name.lower()
                 
                 for announcement in announcements:
-                    title = announcement.get("Title", "").lower()
-                    description = announcement.get("Description", "").lower()
+                    sender = announcement.get("SentByUser", "").lower()
                     
-                    if search_text_lower in title or search_text_lower in description:
+                    if sender_name_lower in sender:
                         filtered_announcements.append(announcement)
                 
                 announcements = filtered_announcements
-                filter_steps.append(f"text '{search_text}'")
+                filter_steps.append(f"sender '{sender_name}'")
+                
+                # If no matches after sender filter, return early
+                if not announcements:
+                    return {"count": 0, "announcements": [], "message": f"No announcements found from sender '{sender_name}'."}
             
-            # If we have a date query but didn't use it initially, apply it now
-            if date_query and sender_name and announcements:
-                # We already filtered by sender, now filter by date
+            # Apply date filter if specified
+            if date_query:
                 # Parse the date query
                 date_query = date_query.lower().strip()
                 
@@ -730,8 +713,7 @@ class AirtableTool:
                                     filtered_announcements.append(announcement)
                         
                         announcements = filtered_announcements
-                        if not filter_steps or "date" not in filter_steps[-1]:
-                            filter_steps.append(f"date '{month_name}'")
+                        filter_steps.append(f"date '{month_name}'")
                         break
                 
                 # If month not found, try other date parsing methods
@@ -754,8 +736,7 @@ class AirtableTool:
                                     filtered_announcements.append(announcement)
                         
                         announcements = filtered_announcements
-                        if not filter_steps or "date" not in filter_steps[-1]:
-                            filter_steps.append(f"date range '{date_query}'")
+                        filter_steps.append(f"date range '{date_query}'")
                     else:
                         # Try to parse a single date
                         single_date = DateUtils.parse_date_time(date_query)
@@ -774,8 +755,26 @@ class AirtableTool:
                                         filtered_announcements.append(announcement)
                             
                             announcements = filtered_announcements
-                            if not filter_steps or "date" not in filter_steps[-1]:
-                                filter_steps.append(f"date '{date_query}'")
+                            filter_steps.append(f"date '{date_query}'")
+                
+                # If no matches after date filter, return early
+                if not announcements:
+                    return {"count": 0, "announcements": [], "message": f"No announcements found for date query '{date_query}'."}
+            
+            # Apply text search filter if specified
+            if search_text and announcements:
+                filtered_announcements = []
+                search_text_lower = search_text.lower()
+                
+                for announcement in announcements:
+                    title = announcement.get("Title", "").lower()
+                    description = announcement.get("Description", "").lower()
+                    
+                    if search_text_lower in title or search_text_lower in description:
+                        filtered_announcements.append(announcement)
+                
+                announcements = filtered_announcements
+                filter_steps.append(f"text '{search_text}'")
             
             # Prepare response message based on filter steps
             if filter_steps:
