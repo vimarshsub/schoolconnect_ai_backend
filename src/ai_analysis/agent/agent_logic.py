@@ -524,36 +524,22 @@ Always maintain context between conversation turns.""")
             Agent response
         """
         try:
-            # Execute the query
+            # Check if this is an announcement listing request
+            is_announcement_request = self._is_announcement_listing_request(query)
+            
+            if is_announcement_request:
+                # Handle announcement listing directly without LLM formatting
+                result = self._handle_announcement_request(query)
+                return {
+                    "response": result,
+                    "success": True
+                }
+            
+            # For non-announcement requests, use the LLM agent
             if chat_history:
                 result = self.agent_executor.run(input=query, chat_history=chat_history)
             else:
                 result = self.agent_executor.run(input=query)
-            
-            # Process the result to ensure count matches actual announcements returned
-            # Check if the result contains announcement data with count mismatch
-            if isinstance(result, str) and "announcements" in result and "count" in result:
-                try:
-                    # Try to extract the actual announcements list
-                    import re
-                    import json
-                    
-                    # Look for patterns that indicate announcement data
-                    count_match = re.search(r"'count':\s*(\d+)", result)
-                    announcements_start = result.find("'announcements':")
-                    
-                    if count_match and announcements_start > 0:
-                        # Count the actual number of announcements in the formatted output
-                        announcement_count = result.count("'AnnouncementId':")
-                        original_count = int(count_match.group(1))
-                        
-                        # If there's a mismatch, update the count in the response
-                        if original_count != announcement_count and announcement_count > 0:
-                            logger.info(f"Fixing count mismatch: original={original_count}, actual={announcement_count}")
-                            result = result.replace(f"'count': {original_count}", f"'count': {announcement_count}")
-                            result = result.replace(f"Found {original_count} announcements", f"Found {announcement_count} announcements")
-                except Exception as format_error:
-                    logger.error(f"Error processing announcement count: {str(format_error)}")
             
             return {
                 "response": result,
@@ -565,6 +551,181 @@ Always maintain context between conversation turns.""")
                 "response": f"I encountered an error: {str(e)}",
                 "success": False
             }
+    
+    def _is_announcement_listing_request(self, query: str) -> bool:
+        """
+        Determine if a query is requesting a list of announcements.
+        
+        Args:
+            query: User query
+            
+        Returns:
+            True if this is an announcement listing request
+        """
+        query = query.lower()
+        
+        # Check for common announcement listing patterns
+        announcement_keywords = [
+            "announcements", "announcement", "messages", "message", "updates", "update"
+        ]
+        
+        # Check for listing patterns
+        listing_patterns = [
+            "show me", "get", "list", "find", "search", "what", "any", "are there"
+        ]
+        
+        # Check for time/sender filters
+        filter_patterns = [
+            "from", "by", "sent by", "in", "during", "recent", "latest", "last"
+        ]
+        
+        # Count matches in different categories
+        has_announcement = any(keyword in query for keyword in announcement_keywords)
+        has_listing = any(pattern in query for pattern in listing_patterns)
+        has_filter = any(pattern in query for pattern in filter_patterns)
+        
+        # Determine if this is likely an announcement listing request
+        return has_announcement and (has_listing or has_filter)
+    
+    def _handle_announcement_request(self, query: str) -> str:
+        """
+        Handle announcement listing requests directly without LLM formatting.
+        
+        Args:
+            query: User query
+            
+        Returns:
+            Formatted response with consistent count and announcements
+        """
+        try:
+            # Extract date filter if present
+            date_filter = self._extract_date_filter(query)
+            
+            # Extract sender filter if present
+            sender_filter = self._extract_sender_filter(query)
+            
+            # Get announcements based on filters
+            if date_filter:
+                result = self.airtable_tool.filter_announcements_by_date(date_filter)
+                filter_type = "date"
+                filter_value = date_filter
+            elif sender_filter:
+                result = self.airtable_tool.search_announcements_by_sender(sender_filter)
+                filter_type = "sender"
+                filter_value = sender_filter
+            else:
+                # General search
+                search_terms = self._extract_search_terms(query)
+                result = self.airtable_tool.search_announcements(search_terms)
+                filter_type = "search"
+                filter_value = search_terms
+            
+            # Format the response with consistent count
+            announcements = result.get("announcements", [])
+            count = len(announcements)
+            
+            # Create a nicely formatted response
+            if count == 0:
+                if filter_type == "date":
+                    return f"There are no announcements found for {filter_value}. If you need information on announcements from a different date or a specific topic, feel free to ask!"
+                elif filter_type == "sender":
+                    return f"There are no announcements found from {filter_value}. If you need information on announcements from a different sender or a specific topic, feel free to ask!"
+                else:
+                    return f"There are no announcements found matching '{filter_value}'. If you need information on a different topic, feel free to ask!"
+            
+            # Format the announcements in a readable way
+            formatted_announcements = []
+            for i, announcement in enumerate(announcements, 1):
+                title = announcement.get("Title", "Untitled")
+                sent_time = announcement.get("SentTime", "")
+                sent_by = announcement.get("SentByUser", "Unknown")
+                
+                # Format the date
+                if sent_time:
+                    try:
+                        from datetime import datetime
+                        dt = datetime.fromisoformat(sent_time.replace("Z", "+00:00"))
+                        sent_time = dt.strftime("%B %d, %Y")
+                    except:
+                        pass
+                
+                formatted_announcements.append(f"{i}. **{title}**\n   - **Sent Time:** {sent_time}\n   - **Sent By:** {sent_by}")
+            
+            # Create the final response
+            if filter_type == "date":
+                response = f"I found {count} announcements for {filter_value}:\n\n"
+            elif filter_type == "sender":
+                response = f"I found {count} announcements from {filter_value}:\n\n"
+            else:
+                response = f"I found {count} announcements matching '{filter_value}':\n\n"
+            
+            response += "\n\n".join(formatted_announcements)
+            
+            return response
+        except Exception as e:
+            logger.error(f"Error handling announcement request: {str(e)}")
+            return f"I encountered an error while processing your request: {str(e)}"
+    
+    def _extract_date_filter(self, query: str) -> str:
+        """Extract date filter from query."""
+        query = query.lower()
+        
+        # Common date patterns
+        date_patterns = [
+            r"in (january|february|march|april|may|june|july|august|september|october|november|december)",
+            r"from (january|february|march|april|may|june|july|august|september|october|november|december)",
+            r"during (january|february|march|april|may|june|july|august|september|october|november|december)",
+            r"last (week|month|year)",
+            r"this (week|month|year)",
+            r"today",
+            r"yesterday"
+        ]
+        
+        import re
+        for pattern in date_patterns:
+            match = re.search(pattern, query)
+            if match:
+                return match.group(0)
+        
+        return ""
+    
+    def _extract_sender_filter(self, query: str) -> str:
+        """Extract sender filter from query."""
+        query = query.lower()
+        
+        # Common sender patterns
+        sender_patterns = [
+            r"from ([a-z\s]+)",
+            r"by ([a-z\s]+)",
+            r"sent by ([a-z\s]+)"
+        ]
+        
+        import re
+        for pattern in sender_patterns:
+            match = re.search(pattern, query)
+            if match and "announcements" not in match.group(1) and "message" not in match.group(1):
+                return match.group(1).strip()
+        
+        return ""
+    
+    def _extract_search_terms(self, query: str) -> str:
+        """Extract search terms from query."""
+        # Remove common announcement request phrases
+        query = query.lower()
+        phrases_to_remove = [
+            "show me", "get", "list", "find", "search for", "what are", "are there any",
+            "announcements", "messages", "updates", "about", "related to", "regarding"
+        ]
+        
+        for phrase in phrases_to_remove:
+            query = query.replace(phrase, "")
+        
+        # Clean up and return non-empty search terms
+        search_terms = query.strip()
+        if not search_terms:
+            search_terms = "recent"  # Default to recent if no specific terms
+            
+        return search_terms
 
 
 # Create an instance of AgentManager to be imported by other modules
