@@ -655,12 +655,26 @@ class AirtableTool:
             # Track our filtering steps for the response message
             filter_steps = []
             
+            # Clean up inputs
+            if search_text:
+                search_text = search_text.strip()
+            
+            if sender_name:
+                sender_name = sender_name.strip()
+            
+            if date_query:
+                date_query = date_query.strip()
+            
+            # Log the actual filters being applied
+            logger.info(f"Applying filters - search_text: '{search_text}', sender_name: '{sender_name}', date_query: '{date_query}'")
+            
             # Start with all announcements
             all_result = self.get_all_announcements()
             if not isinstance(all_result, dict) or "announcements" not in all_result:
                 return {"count": 0, "announcements": [], "message": "No announcements found."}
                 
             announcements = all_result["announcements"]
+            logger.info(f"Starting with {len(announcements)} total announcements")
             
             # Apply sender filter if specified
             if sender_name:
@@ -675,13 +689,14 @@ class AirtableTool:
                 
                 announcements = filtered_announcements
                 filter_steps.append(f"sender '{sender_name}'")
+                logger.info(f"After sender filter, found {len(announcements)} announcements from '{sender_name}'")
                 
-                # If no matches after sender filter, return early
+                # No longer returning early if no matches
                 if not announcements:
-                    return {"count": 0, "announcements": [], "message": f"No announcements found from sender '{sender_name}'."}
+                    logger.info(f"No announcements found from sender '{sender_name}'")
             
             # Apply date filter if specified
-            if date_query:
+            if date_query and announcements:
                 # Parse the date query
                 date_query = date_query.lower().strip()
                 
@@ -714,6 +729,7 @@ class AirtableTool:
                         
                         announcements = filtered_announcements
                         filter_steps.append(f"date '{month_name}'")
+                        logger.info(f"After date filter for '{month_name}', found {len(announcements)} announcements")
                         break
                 
                 # If month not found, try other date parsing methods
@@ -737,6 +753,7 @@ class AirtableTool:
                         
                         announcements = filtered_announcements
                         filter_steps.append(f"date range '{date_query}'")
+                        logger.info(f"After date range filter for '{date_query}', found {len(announcements)} announcements")
                     else:
                         # Try to parse a single date
                         single_date = DateUtils.parse_date_time(date_query)
@@ -756,25 +773,81 @@ class AirtableTool:
                             
                             announcements = filtered_announcements
                             filter_steps.append(f"date '{date_query}'")
+                            logger.info(f"After single date filter for '{date_query}', found {len(announcements)} announcements")
                 
-                # If no matches after date filter, return early
+                # No longer returning early if no matches
                 if not announcements:
-                    return {"count": 0, "announcements": [], "message": f"No announcements found for date query '{date_query}'."}
+                    logger.info(f"No announcements found for date query '{date_query}'")
+            
+            # Get the original announcements if we've filtered out everything
+            original_announcements = []
+            if not announcements and (sender_name or date_query):
+                # If we've filtered out everything but we have a text search,
+                # try using the text search on the original dataset
+                logger.info("Resetting to all announcements for text search")
+                original_announcements = all_result["announcements"]
             
             # Apply text search filter if specified
-            if search_text and announcements:
-                filtered_announcements = []
+            if search_text:
                 search_text_lower = search_text.lower()
                 
-                for announcement in announcements:
-                    title = announcement.get("Title", "").lower()
-                    description = announcement.get("Description", "").lower()
-                    
-                    if search_text_lower in title or search_text_lower in description:
-                        filtered_announcements.append(announcement)
+                # If we have no announcements left from previous filters
+                # but want to still search by text, use original announcements
+                if not announcements and original_announcements:
+                    announcements = original_announcements
                 
-                announcements = filtered_announcements
-                filter_steps.append(f"text '{search_text}'")
+                if announcements:
+                    filtered_announcements = []
+                    
+                    logger.info(f"Applying text filter with search term: '{search_text_lower}'")
+                    logger.info(f"Starting with {len(announcements)} announcements")
+                    
+                    # Add related terms for common search queries
+                    related_terms = []
+                    
+                    # Special case for holidays and events
+                    if "easter" in search_text_lower:
+                        related_terms = ["easter", "egg hunt", "bunny", "eggs"]
+                    elif "christmas" in search_text_lower:
+                        related_terms = ["christmas", "santa", "holiday", "xmas"]
+                    elif "halloween" in search_text_lower:
+                        related_terms = ["halloween", "costume", "trick or treat", "pumpkin"]
+                    elif "field trip" in search_text_lower:
+                        related_terms = ["field trip", "fieldtrip", "trip", "excursion", "visit"]
+                    else:
+                        # Default to just the search terms
+                        related_terms = [term for term in search_text_lower.split() if len(term) > 2]
+                        if not related_terms and search_text_lower:
+                            related_terms = [search_text_lower]
+                    
+                    logger.info(f"Searching for these terms: {related_terms}")
+                    
+                    for announcement in announcements:
+                        title = announcement.get("Title", "").lower()
+                        description = announcement.get("Description", "").lower()
+                        sent_by = announcement.get("SentByUser", "").lower()
+                        
+                        # Combine fields for easier searching
+                        combined_text = f"{title} {description} {sent_by}"
+                        
+                        # Log announcement details for debugging
+                        logger.info(f"Checking announcement: '{title}' from '{sent_by}'")
+                        
+                        # Check for exact phrase match
+                        exact_match = search_text_lower and search_text_lower in combined_text
+                        
+                        # Check for related terms - ANY term match counts as a match
+                        term_match = any(term and term in combined_text for term in related_terms)
+                        
+                        if exact_match or term_match:
+                            match_type = "exact match" if exact_match else "term match"
+                            logger.info(f"MATCH FOUND ({match_type}): {title}")
+                            filtered_announcements.append(announcement)
+                    
+                    announcements = filtered_announcements
+                    if search_text_lower:  # Only add to filter steps if there's actual search text
+                        filter_steps.append(f"text '{search_text}'")
+                    logger.info(f"After text filter, found {len(announcements)} matching announcements")
             
             # Prepare response message based on filter steps
             if filter_steps:

@@ -67,6 +67,11 @@ class GetCurrentDateInput(BaseModel):
 class TimezoneInfoInput(BaseModel):
     timezone: Optional[str] = Field(None, description="Timezone to get information about (e.g., 'America/New_York', 'UTC')")
 
+class AnnouncementFilterInput(BaseModel):
+    search_text: Optional[str] = Field(None, description="Text to search for in announcement titles and descriptions")
+    sender_name: Optional[str] = Field(None, description="Name of the sender to filter by")
+    date_query: Optional[str] = Field(None, description="Date query string (e.g., 'in May', 'last week', 'this month')")
+
 # Empty schema for tools that take no arguments
 class EmptySchema(BaseModel):
     pass
@@ -336,10 +341,11 @@ class AgentManager:
                 func=self.airtable_tool.filter_announcements_by_date,
                 description="Filter announcements by date based on the SentTime field. Examples: 'in May', 'last week', 'this month', '2023-01-01'."
             ),
-            Tool(
-                name="combined_filter_announcements",
+            StructuredTool.from_function(
                 func=self.airtable_tool.combined_filter_announcements,
-                description="Filter announcements using multiple criteria simultaneously. You can specify text to search for, sender name, and/or date query. This is the preferred tool for complex queries with multiple filter conditions."
+                name="combined_filter_announcements",
+                description="Filter announcements using multiple criteria simultaneously. You can specify text to search for, sender name, and/or date query. This is the preferred tool for complex queries with multiple filter conditions.",
+                args_schema=AnnouncementFilterInput
             ),
             Tool(
                 name="get_attachment",
@@ -420,11 +426,15 @@ Your primary responsibilities are:
 4. Provide helpful information about school activities
 
 When searching for announcements:
-- Use the appropriate search tools based on the user's query
-- If the user asks about a specific sender, use search_announcements_by_sender
-- If the user asks about a specific date or time period, use filter_announcements_by_date
-- For general searches, use search_announcements
-- For complex announcement queries with multiple filter conditions (e.g., "Show me easter announcements from Jane in May"), use the combined_filter_announcements tool instead of making multiple separate tool calls. This tool can handle text search, sender filtering, and date filtering all at once.
+- Use the combined_filter_announcements tool for all searches, even simple ones
+- When using combined_filter_announcements, separate the filter parameters clearly:
+  - search_text: Use for keywords like "easter", "field trip", etc.
+  - sender_name: Use for the name of the person who sent the announcement
+  - date_query: Use for date-related filtering like "in May", "last week", etc.
+- For complex queries like "Show me easter announcements sent by Sierra Robbins in May", use all three parameters:
+  - search_text: "easter"
+  - sender_name: "Sierra Robbins"
+  - date_query: "in May"
 - Present results in a clear, organized manner
 
 When working with calendar events:
