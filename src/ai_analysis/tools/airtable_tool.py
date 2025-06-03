@@ -193,7 +193,7 @@ class AirtableTool:
         Filter announcements by date based on the SentTime field.
         
         Args:
-            date_query: Date query string (e.g., "in May", "last week", "2023-01-01")
+            date_query: Date query string (e.g., "in May", "last week", "this month", "2023-01-01")
             
         Returns:
             Dictionary with filtered announcements list and count
@@ -630,3 +630,166 @@ class AirtableTool:
             error_msg = f"An unexpected error occurred during download: {str(e)}"
             logger.error(error_msg)
             return error_msg
+
+    def combined_filter_announcements(self, 
+                                     search_text: Optional[str] = None,
+                                     sender_name: Optional[str] = None,
+                                     date_query: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Filter announcements using multiple criteria simultaneously.
+        
+        Args:
+            search_text: Optional text to search for in Title, Description fields
+            sender_name: Optional sender name to filter by
+            date_query: Optional date query (e.g., "in May", "last week", "this month")
+            
+        Returns:
+            Dictionary with filtered announcements list and count
+        """
+        if not self.client.airtable:
+            error_msg = "Error: Airtable connection not initialized."
+            logger.error(error_msg)
+            return {"count": 0, "announcements": [], "error": error_msg}
+        
+        try:
+            # Track our filtering steps for the response message
+            filter_steps = []
+            
+            # Start with all announcements or apply initial filter
+            announcements = []
+            if sender_name:
+                # Start by filtering by sender
+                sender_result = self.search_announcements_by_sender(sender_name)
+                if isinstance(sender_result, dict) and "announcements" in sender_result:
+                    announcements = sender_result["announcements"]
+                    filter_steps.append(f"sender '{sender_name}'")
+                else:
+                    return {"count": 0, "announcements": [], "message": f"No announcements found from sender '{sender_name}'."}
+            elif date_query:
+                # Start by filtering by date
+                date_result = self.filter_announcements_by_date(date_query)
+                if isinstance(date_result, dict) and "announcements" in date_result:
+                    announcements = date_result["announcements"]
+                    filter_steps.append(f"date '{date_query}'")
+                else:
+                    return {"count": 0, "announcements": [], "message": f"No announcements found for date query '{date_query}'."}
+            else:
+                # Start with all announcements if no sender or date filter
+                all_result = self.get_all_announcements()
+                if isinstance(all_result, dict) and "announcements" in all_result:
+                    announcements = all_result["announcements"]
+                else:
+                    return {"count": 0, "announcements": [], "message": "No announcements found."}
+            
+            # If we have a text search, filter the current results
+            if search_text and announcements:
+                filtered_announcements = []
+                search_text_lower = search_text.lower()
+                
+                for announcement in announcements:
+                    title = announcement.get("Title", "").lower()
+                    description = announcement.get("Description", "").lower()
+                    
+                    if search_text_lower in title or search_text_lower in description:
+                        filtered_announcements.append(announcement)
+                
+                announcements = filtered_announcements
+                filter_steps.append(f"text '{search_text}'")
+            
+            # If we have a date query but didn't use it initially, apply it now
+            if date_query and sender_name and announcements:
+                # We already filtered by sender, now filter by date
+                # Parse the date query
+                date_query = date_query.lower().strip()
+                
+                # Handle month names
+                month_names = {month.lower(): i for i, month in enumerate(calendar.month_name) if month}
+                month_found = False
+                
+                for month_name, month_num in month_names.items():
+                    if month_name in date_query:
+                        month_found = True
+                        # Get current year for default
+                        current_year = datetime.now().year
+                        
+                        # Create start and end dates for the month
+                        start_date = datetime(current_year, month_num, 1).replace(tzinfo=dateutil.tz.UTC)
+                        
+                        if month_num == 12:
+                            end_date = datetime(current_year + 1, 1, 1).replace(tzinfo=dateutil.tz.UTC)
+                        else:
+                            end_date = datetime(current_year, month_num + 1, 1).replace(tzinfo=dateutil.tz.UTC)
+                        
+                        # Filter announcements by date
+                        filtered_announcements = []
+                        for announcement in announcements:
+                            sent_time_str = announcement.get("SentTime")
+                            if sent_time_str:
+                                sent_time = self._parse_sent_time(sent_time_str)
+                                if sent_time and start_date <= sent_time < end_date:
+                                    filtered_announcements.append(announcement)
+                        
+                        announcements = filtered_announcements
+                        if not filter_steps or "date" not in filter_steps[-1]:
+                            filter_steps.append(f"date '{month_name}'")
+                        break
+                
+                # If month not found, try other date parsing methods
+                if not month_found:
+                    # Try to extract a date range
+                    start_date, end_date = DateUtils.extract_date_time_range(date_query)
+                    
+                    if start_date and end_date:
+                        # Make timezone-aware
+                        start_date = start_date.replace(tzinfo=dateutil.tz.UTC)
+                        end_date = end_date.replace(tzinfo=dateutil.tz.UTC)
+                        
+                        # Filter announcements by date range
+                        filtered_announcements = []
+                        for announcement in announcements:
+                            sent_time_str = announcement.get("SentTime")
+                            if sent_time_str:
+                                sent_time = self._parse_sent_time(sent_time_str)
+                                if sent_time and start_date <= sent_time < end_date:
+                                    filtered_announcements.append(announcement)
+                        
+                        announcements = filtered_announcements
+                        if not filter_steps or "date" not in filter_steps[-1]:
+                            filter_steps.append(f"date range '{date_query}'")
+                    else:
+                        # Try to parse a single date
+                        single_date = DateUtils.parse_date_time(date_query)
+                        if single_date:
+                            # Make timezone-aware
+                            single_date = single_date.replace(tzinfo=dateutil.tz.UTC)
+                            next_day = single_date + timedelta(days=1)
+                            
+                            # Filter announcements by single date
+                            filtered_announcements = []
+                            for announcement in announcements:
+                                sent_time_str = announcement.get("SentTime")
+                                if sent_time_str:
+                                    sent_time = self._parse_sent_time(sent_time_str)
+                                    if sent_time and single_date <= sent_time < next_day:
+                                        filtered_announcements.append(announcement)
+                            
+                            announcements = filtered_announcements
+                            if not filter_steps or "date" not in filter_steps[-1]:
+                                filter_steps.append(f"date '{date_query}'")
+            
+            # Prepare response message based on filter steps
+            if filter_steps:
+                filter_msg = " AND ".join(filter_steps)
+                message = f"Found {len(announcements)} announcements matching {filter_msg}."
+            else:
+                message = f"Found {len(announcements)} announcements."
+            
+            return {
+                "count": len(announcements),
+                "announcements": announcements,
+                "message": message
+            }
+        except Exception as e:
+            error_msg = f"Error filtering announcements: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return {"count": 0, "announcements": [], "error": error_msg}

@@ -337,6 +337,11 @@ class AgentManager:
                 description="Filter announcements by date based on the SentTime field. Examples: 'in May', 'last week', 'this month', '2023-01-01'."
             ),
             Tool(
+                name="combined_filter_announcements",
+                func=self.airtable_tool.combined_filter_announcements,
+                description="Filter announcements using multiple criteria simultaneously. You can specify text to search for, sender name, and/or date query. This is the preferred tool for complex queries with multiple filter conditions."
+            ),
+            Tool(
                 name="get_attachment",
                 func=self._get_and_download_attachment,
                 description="Get an attachment from an announcement by ID, search term, or get the latest. Returns the local file path."
@@ -417,6 +422,8 @@ When creating calendar events or reminders:
 3. Ensure all dates are in the future and use the correct year (2025)
 4. Format dates in ISO format (YYYY-MM-DDTHH:MM:SSZ)
 5. Consider the user's timezone ({self.user_timezone}) when interpreting time references
+
+For complex announcement queries with multiple filter conditions (e.g., "Show me easter announcements from Jane in May"), use the combined_filter_announcements tool instead of making multiple separate tool calls. This tool can handle text search, sender filtering, and date filtering all at once.
 
 For calendar-related tasks, help users create, find, and manage their events and reminders effectively. You can also provide date calculations and ranges when users need to know about specific time periods.
 
