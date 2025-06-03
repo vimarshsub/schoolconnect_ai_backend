@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # Google Calendar settings
     GOOGLE_CALENDAR_CREDENTIALS: Optional[str] = Field(None, env="GOOGLE_CALENDAR_CREDENTIALS")
     
+    # Security settings
+    CRON_API_KEY: str = Field("", env="CRON_API_KEY")
+    
     # General settings
     DEBUG: bool = Field(False, env="DEBUG")
     PORT: int = Field(8000, env="PORT")

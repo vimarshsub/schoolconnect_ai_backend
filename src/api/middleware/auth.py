@@ -57,6 +57,17 @@ class AuthMiddleware:
         # Skip authentication for certain paths
         if request.url.path in ["/health", "/api/auth/login", "/api/auth/refresh"]:
             return await call_next(request)
+            
+        # Special handling for ingestion endpoint with API key
+        if request.url.path == "/api/ingestion/sync":
+            # Check for API key in query parameters
+            api_key = request.query_params.get("api_key")
+            if api_key:
+                from src.core.config import get_settings
+                settings = get_settings()
+                if api_key == settings.CRON_API_KEY:
+                    # API key is valid, allow the request
+                    return await call_next(request)
         
         # Check for Authorization header
         auth_header = request.headers.get("Authorization")

@@ -147,6 +147,21 @@ The server will be available at `http://localhost:8000`.
 - `GET /api/ingestion/config`: Get the current configuration for data ingestion
 - `PUT /api/ingestion/config`: Update the configuration for data ingestion
 
+#### Automated Data Ingestion (Cron Jobs)
+To set up automated data ingestion using a cron job, you can use the `/api/ingestion/sync` endpoint with API key authentication:
+
+```bash
+# Add to your server's crontab to run daily at midnight
+0 0 * * * curl -X POST "https://your-api-url/api/ingestion/sync?api_key=your_cron_api_key"
+```
+
+Required environment variables for this approach:
+- `CRON_API_KEY`: A secure API key to authenticate cron requests
+- `SCHOOLCONNECT_USERNAME`: SchoolConnect username
+- `SCHOOLCONNECT_PASSWORD`: SchoolConnect password
+
+This approach avoids issues with expired authentication tokens and doesn't require storing credentials in the cron job itself.
+
 #### AI Analysis
 - `POST /api/chat`: Send a message to the AI agent and get a response
 - `GET /api/chat/{session_id}`: Get the chat history for a specific session
