@@ -117,17 +117,64 @@ class AirtableTool:
             return {"count": 0, "announcements": [], "error": error_msg}
         
         try:
+            # HYBRID APPROACH: First try optimized search with Airtable formula
             # Escape single quotes in sender name to prevent formula syntax errors
             escaped_sender_name = sender_name.replace("'", "\\'")
             
             # Create a formula that searches for the sender name in the SentByUser field
             formula = f"FIND(LOWER('{escaped_sender_name}'), LOWER({{SentByUser}}))"
             
-            # Use native Airtable filtering instead of fetching all records
+            # Use native Airtable filtering first
             matched_records = self.client.get_records_with_formula(formula)
-            
             announcements = [record["fields"] for record in matched_records if "fields" in record]
             
+            # If no results found with exact matching, fall back to fuzzy matching
+            if not announcements:
+                logger.info(f"No exact matches found for sender '{sender_name}', falling back to fuzzy matching")
+                
+                # Import fuzzy matching library
+                from rapidfuzz import fuzz, process
+                
+                # Get all records to perform fuzzy matching
+                all_records = self.client.get_all_records()
+                
+                # Extract unique sender names
+                all_senders = set()
+                for record in all_records:
+                    if "fields" in record and "SentByUser" in record["fields"]:
+                        all_senders.add(record["fields"]["SentByUser"])
+                
+                # Find the best matching sender name with a similarity threshold
+                SIMILARITY_THRESHOLD = 80  # Minimum similarity score (0-100)
+                best_matches = process.extract(
+                    sender_name, 
+                    all_senders, 
+                    scorer=fuzz.token_sort_ratio,
+                    limit=3,
+                    score_cutoff=SIMILARITY_THRESHOLD
+                )
+                
+                # If we found fuzzy matches
+                if best_matches:
+                    logger.info(f"Found fuzzy matches for '{sender_name}': {best_matches}")
+                    
+                    # Filter records by the best matching sender names
+                    fuzzy_matched_records = []
+                    for record in all_records:
+                        if ("fields" in record and 
+                            "SentByUser" in record["fields"] and 
+                            any(record["fields"]["SentByUser"] == match[0] for match in best_matches)):
+                            fuzzy_matched_records.append(record)
+                    
+                    announcements = [record["fields"] for record in fuzzy_matched_records]
+                    
+                    return {
+                        "count": len(announcements),
+                        "announcements": announcements,
+                        "message": f"Found {len(announcements)} announcements from sender similar to '{sender_name}'."
+                    }
+            
+            # Return results from either exact or fuzzy matching
             if not announcements:
                 return {"count": 0, "announcements": [], "message": f"No announcements found from sender '{sender_name}'."}
             
