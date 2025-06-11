@@ -1,0 +1,19 @@
+name: SchoolConnect Ingestion Cron Job
+
+on:
+  schedule:
+    # Runs every day at midnight UTC
+    # Change this to your desired schedule using cron syntax
+    - cron: '0 0 * * *'
+  # Allow manual triggering for testing
+  workflow_dispatch:
+
+jobs:
+  trigger-ingestion:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Ingestion API
+        run: |
+          curl -X POST "https://neutral-clarie-vimarshsub-5eeabd52.koyeb.app/api/ingestion/cron?api_key=${{ secrets.CRON_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"max_pages": 10}' 
