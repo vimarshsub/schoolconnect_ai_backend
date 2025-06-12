@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional, List
 
 from .config import MAX_RETRIES, OPENAI_MODEL
 from .utils import calculate_reminder_date
-from ..ai_analysis.agent.agent_logic import get_agent_manager
+from src.ai_analysis.agent.agent_logic import AgentManager
 
 class AnnouncementProcessor:
     """
@@ -27,7 +27,7 @@ class AnnouncementProcessor:
             agent_manager: Agent manager for OpenAI API calls
             logger: Logger instance
         """
-        self.agent_manager = agent_manager or get_agent_manager()
+        self.agent_manager = agent_manager or AgentManager()
         self.logger = logger or logging.getLogger(__name__)
         
     def process_announcement(self, announcement: Dict[str, Any]) -> Optional[Dict[str, Any]]:
