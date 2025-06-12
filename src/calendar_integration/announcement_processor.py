@@ -101,7 +101,7 @@ class AnnouncementProcessor:
             try:
                 self.logger.debug(f"Extraction attempt {attempt+1}/{MAX_RETRIES}")
                 result = self.agent_manager.agent_executor.invoke({"input": prompt})
-                extraction = self._parse_extraction_result(result.get('response', ''))
+                extraction = self._parse_extraction_result(result.get('output', ''))
                 if extraction:
                     return extraction
                 self.logger.warning(f"Failed to parse extraction result (attempt {attempt+1}/{MAX_RETRIES})")
@@ -126,7 +126,7 @@ class AnnouncementProcessor:
         ANNOUNCEMENT:
         {announcement_text}
 
-        Extract the following information in this exact format:
+        Extract the following information in this exact format. DO NOT include any conversational text, explanations, or tool calls. Only provide the extracted information in the specified format:
         EVENT: [Name or title of the event]
         DATE OF EVENT: [Date when the event will occur, in YYYY-MM-DD format]
         SUPPLIES NEEDED: [List any materials, items, or forms that need to be provided by parents/students]
@@ -153,24 +153,24 @@ class AnnouncementProcessor:
             Dict with extracted event details or None if parsing failed
         """
         try:
-            lines = response_text.strip().split('\n')
-            extraction = {}
+            # Split by '---' to handle multiple potential event extractions and take the first one
+            event_blocks = response_text.strip().split('---\n')
             
-            for line in lines:
-                if ':' not in line:
-                    continue
-                    
-                key, value = line.split(':', 1)
-                key = key.strip()
-                value = value.strip()
+            for block in event_blocks:
+                extraction = {}
+                lines = block.strip().split('\n')
                 
-                if key in ['EVENT', 'DATE OF EVENT', 'SUPPLIES NEEDED', 'SUPPLIES DUE DATE', 'REMINDER DATE']:
-                    extraction[key] = value
-                    
-            # Check if we have the minimum required fields
-            if 'EVENT' in extraction and 'DATE OF EVENT' in extraction:
-                return extraction
+                for line in lines:
+                    match = re.match(r'^(EVENT|DATE OF EVENT|SUPPLIES NEEDED|SUPPLIES DUE DATE|REMINDER DATE):\s*(.*)$', line.strip())
+                    if match:
+                        key = match.group(1).strip()
+                        value = match.group(2).strip()
+                        extraction[key] = value
                 
+                # Check if we have the minimum required fields for this block
+                if 'EVENT' in extraction and 'DATE OF EVENT' in extraction:
+                    return extraction
+                    
             return None
             
         except Exception as e:
