@@ -71,7 +71,8 @@ def run_sync_job() -> Dict[str, Any]:
 
                     # Prepare update data for Airtable
                     update_data = {
-                        PROCESSED_FIELD: True                        EVENT_ID_FIELD: ''
+                        PROCESSED_FIELD: True,
+                        EVENT_ID_FIELD: ''
                     }
 
                     if calendar_result:
