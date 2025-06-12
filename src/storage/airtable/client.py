@@ -235,3 +235,57 @@ class AirtableClient:
         except Exception as e:
             logger.error(f"Error retrieving latest record from Airtable: {str(e)}", exc_info=True)
             return None
+
+
+    def filter_announcements_by_date(self, cutoff_date: str) -> List[Dict[str, Any]]:
+        """
+        Filter announcements by SentTime field, returning those sent after the cutoff date.
+
+        Args:
+            cutoff_date: Date string in 'YYYY-MM-DD' format.
+
+        Returns:
+            List of announcements sent after the cutoff date.
+        """
+        if not self.airtable:
+            logger.error("Airtable connection not initialized")
+            return []
+
+        try:
+            # Airtable formula to filter by date. Assuming 'SentTime' is the field name.
+            # The formula checks if 'SentTime' is greater than or equal to the cutoff_date.
+            formula = f"IS_AFTER({{SentTime}}, \"{cutoff_date}\")"
+            # Also add a check for the 'CalendarProcessed' field to only get unprocessed ones
+            formula += f", {{CalendarProcessed}} = 0"
+            
+            records = self.get_records_with_formula(formula, sort_field="SentTime", sort_direction="asc")
+            logger.info(f"Filtered {len(records)} announcements sent after {cutoff_date}")
+            return records
+        except Exception as e:
+            logger.error(f"Error filtering announcements by date: {str(e)}", exc_info=True)
+            return []
+
+    def update_record(self, record_id: str, fields: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Update a record in Airtable.
+
+        Args:
+            record_id: The ID of the record to update.
+            fields: A dictionary of fields to update.
+
+        Returns:
+            The updated record, or None if the update failed.
+        """
+        if not self.airtable:
+            logger.error("Airtable connection not initialized")
+            return None
+
+        try:
+            result = self.airtable.update(record_id, fields)
+            logger.info(f"Updated record {record_id} in Airtable with fields: {fields}")
+            return result
+        except Exception as e:
+            logger.error(f"Error updating record {record_id} in Airtable: {str(e)}", exc_info=True)
+            return None
+
+
