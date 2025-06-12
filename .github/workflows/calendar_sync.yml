@@ -29,4 +29,5 @@ jobs:
           AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
+          export PYTHONPATH=$PYTHONPATH:.
           python -c "from src.calendar_integration.tasks.sync_calendar import run_sync_job; run_sync_job()"
