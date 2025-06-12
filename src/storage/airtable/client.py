@@ -253,11 +253,7 @@ class AirtableClient:
 
         try:
             # Airtable formula to filter by date. Assuming 'SentTime' is the field name.
-            # The formula checks if 'SentTime' is greater than or equal to the cutoff_date.
-            formula = f"IS_AFTER({{SentTime}}, \"{cutoff_date}\")"
-            # Also add a check for the 'CalendarProcessed' field to only get unprocessed ones
-            formula += f", {{CalendarProcessed}} = 0"
-            
+            # The formula checks if 'SentTime' is greater than or equal to the cutoff_date.            formula = f"AND(IS_AFTER({{SentTime}}, \"{cutoff_date}\"), {{CalendarProcessed}} = FALSE())"            
             records = self.get_records_with_formula(formula, sort_field="SentTime", sort_direction="asc")
             logger.info(f"Filtered {len(records)} announcements sent after {cutoff_date}")
             return records
