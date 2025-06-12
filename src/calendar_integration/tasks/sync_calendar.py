@@ -59,10 +59,8 @@ def run_sync_job() -> Dict[str, Any]:
             
             for announcement in batch:
                 try:
-                    # Extract event details
-                    event_details = processor.process_announcement(announcement.get('fields', {}))
-                                   if not event_details:
-                        # No event found or extraction failed
+                    event_details = processor.process_announcement(announcement.get(\'fields\', {}))
+                    if not event_details:
                         logger.info(f"No event details found in announcement {announcement.get(\'id\')}")
                         # Mark as processed to avoid reprocessing
                         airtable_client.update_record(announcement.get(\'id\'), {PROCESSED_FIELD: True})
