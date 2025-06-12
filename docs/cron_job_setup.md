@@ -11,9 +11,9 @@ The cron job uses API key authentication to securely access protected endpoints 
 
 ### API Key Configuration
 
-1. The API key is stored in the `.env` file as `CRON_API_KEY`.
-2. For security, use a strong, random string for the API key value.
-3. The same API key must be configured in both the main app and the cron job worker.
+1. The API key is stored in the `.env` file as `CRON_API_KEY` for local development.
+2. For production, the API key is stored as a GitHub Actions secret.
+3. For security, use a strong, random string for the API key value.
 
 Example:
 ```
@@ -39,20 +39,37 @@ The following endpoints support API key authentication:
 Both endpoints accept the API key as a query parameter:
 
 ```
-POST /api/ingestion/sync?api_key=your_api_key
+POST /api/ingestion/cron?api_key=your_api_key
 ```
 
-## Setting Up the Koyeb Worker
+## Setting Up GitHub Actions Workflow
 
-To set up a cron job in Koyeb:
+The cron job is implemented as a GitHub Actions workflow in `.github/workflows/cron-job.yml`. The workflow:
 
-1. Create a new Worker service using the `curlimages/curl:latest` Docker image.
-2. Set up the Worker to call your backend API with the API key.
-3. Configure the environment variable `CRON_API_KEY` with the same value as your main app.
+1. Create a workflow file at `.github/workflows/cron-job.yml`.
+2. Configure it to run on a schedule (daily at midnight UTC by default).
+3. Add the API key as a GitHub secret.
 
-Example Worker command:
-```
-curl -X POST "https://your-app-name.koyeb.app/api/ingestion/sync?api_key=$CRON_API_KEY" -H "Content-Type: application/json" -d '{"max_pages": 10}'
+Example workflow:
+```yaml
+name: SchoolConnect Ingestion Cron Job
+
+on:
+  schedule:
+    # Runs every day at midnight UTC
+    - cron: '0 0 * * *'
+  # Allow manual triggering for testing
+  workflow_dispatch:
+
+jobs:
+  trigger-ingestion:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Ingestion API
+        run: |
+          curl -X POST "https://your-app-name.koyeb.app/api/ingestion/cron?api_key=${{ secrets.CRON_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"max_pages": 10}'
 ```
 
 ## Testing API Key Authentication
@@ -60,14 +77,13 @@ curl -X POST "https://your-app-name.koyeb.app/api/ingestion/sync?api_key=$CRON_A
 Several test scripts are provided to verify the API key authentication:
 
 1. `test_cron_api_key.py` - Tests both authentication endpoints
-2. `test_worker_simple.sh` - Simple bash script to test the API key with curl
-3. `debug_auth_middleware.py` - Debug script to identify authentication issues
+2. `debug_auth_middleware.py` - Debug script to identify authentication issues
 
 ## Troubleshooting
 
 If you encounter 401 Unauthorized errors:
 
-1. Verify that the `CRON_API_KEY` is properly set in both environments
+1. Verify that the `CRON_API_KEY` is properly set in the GitHub repository secrets
 2. Check that the API key is correctly passed as a query parameter
 3. Ensure the server has been restarted after any middleware changes
 4. Look for any errors in the server logs
@@ -75,10 +91,10 @@ If you encounter 401 Unauthorized errors:
 
 ## SchoolConnect Credentials
 
-For the data ingestion to work properly, ensure these environment variables are set:
+For the data ingestion to work properly, ensure these environment variables are set on your server:
 
 1. `SCHOOLCONNECT_USERNAME` - Your SchoolConnect username
 2. `SCHOOLCONNECT_PASSWORD` - Your SchoolConnect password
 3. `SCHOOLCONNECT_GRAPHQL_URL` - The GraphQL API endpoint
 
-These are required by the worker to authenticate with SchoolConnect and fetch announcements. 
+These are required to authenticate with SchoolConnect and fetch announcements. 
