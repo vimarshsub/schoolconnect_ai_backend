@@ -71,8 +71,7 @@ def run_sync_job() -> Dict[str, Any]:
 
                     # Prepare update data for Airtable
                     update_data = {
-                        PROCESSED_FIELD: True,
-                        EVENT_ID_FIELD: ''
+                        PROCESSED_FIELD: True                        EVENT_ID_FIELD: ''
                     }
 
                     if calendar_result:
@@ -87,9 +86,8 @@ def run_sync_job() -> Dict[str, Any]:
                     # Update Airtable record with event IDs and mark as processed
                     airtable_client.update_record(announcement.get(\'id\'), update_data)           
                 except Exception as e:
-                    logger.error(f"Error processing announcement {announcement.get('id')}: {str(e)}", exc_info=True)
-                    failed_count += 1
-                    
+                    logger.error(f"Error processing announcement {announcement.get(\'id\')}: {str(e)}", exc_info=True)
+                    failed_count += 1                   
         logger.info(f"Calendar sync job completed. Processed: {processed_count}, Failed: {failed_count}")
         
         return {
