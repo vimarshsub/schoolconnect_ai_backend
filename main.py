@@ -59,6 +59,13 @@ app.add_middleware(
 # Set up authentication middleware
 setup_middleware(app)
 
+# Add a global OPTIONS handler for CORS preflight requests
+@app.options("/{path:path}")
+async def options_handler(path: str):
+    """Global handler for OPTIONS requests to support CORS preflight."""
+    logger.debug(f"Handling OPTIONS request for path: {path}")
+    return {}  # Return empty response with 200 status
+
 # Add a direct health check endpoint at the root level
 @app.get("/health")
 async def health_check():

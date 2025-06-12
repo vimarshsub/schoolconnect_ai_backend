@@ -64,6 +64,11 @@ class AuthMiddleware:
             
         # Create a request object from the scope for easier handling
         request = Request(scope)
+        
+        # Skip authentication for OPTIONS requests (CORS preflight)
+        if request.method == "OPTIONS":
+            logger.debug(f"Skipping authentication for OPTIONS request to {request.url.path}")
+            return await self.app(scope, receive, send)
             
         # Skip authentication for certain paths
         if request.url.path in ["/health", "/api/auth/login", "/api/auth/refresh"]:
