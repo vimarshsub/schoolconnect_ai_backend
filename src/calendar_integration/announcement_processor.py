@@ -100,7 +100,7 @@ class AnnouncementProcessor:
         for attempt in range(MAX_RETRIES):
             try:
                 self.logger.debug(f"Extraction attempt {attempt+1}/{MAX_RETRIES}")
-                result = self.agent_manager.execute(prompt, model=OPENAI_MODEL)
+                result = self.agent_manager.agent_executor.invoke({"input": prompt})
                 extraction = self._parse_extraction_result(result.get('response', ''))
                 if extraction:
                     return extraction
