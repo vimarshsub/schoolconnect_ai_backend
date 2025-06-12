@@ -59,7 +59,7 @@ def run_sync_job() -> Dict[str, Any]:
             
             for announcement in batch:
                 try:
-                    event_details = processor.process_announcement(announcement.get(\'fields\', {}))
+                    event_details = processor.process_announcement(announcement.get("fields", {}))
                     if not event_details:
                         logger.info(f"No event details found in announcement {announcement.get(\'id\')}")
                         # Mark as processed to avoid reprocessing
