@@ -80,6 +80,7 @@ class AgentManager:
     """Manager for AI agent setup and execution."""
     
     def __init__(self, user_timezone: Optional[str] = None):
+        self.agent_executor = None  # Initialize to None
         """
         Initialize the agent manager.
         
@@ -100,7 +101,11 @@ class AgentManager:
         self.calendar_tool = GoogleCalendarTool()
         
         # Set up agent
-        self.agent_executor = self._setup_agent()
+        try:
+            self.agent_executor = self._setup_agent()
+        except Exception as e:
+            logger.error(f"Failed to set up agent executor: {e}", exc_info=True)
+            raise
     
     def _create_calendar_event_wrapper(self, title: str, start_datetime: str, 
                               end_datetime: Optional[str] = None, 

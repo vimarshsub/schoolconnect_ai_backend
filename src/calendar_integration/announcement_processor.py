@@ -100,6 +100,9 @@ class AnnouncementProcessor:
         for attempt in range(MAX_RETRIES):
             try:
                 self.logger.debug(f"Extraction attempt {attempt+1}/{MAX_RETRIES}")
+                if self.agent_manager.agent_executor is None:
+                    self.logger.error("Agent executor is not initialized in AgentManager.")
+                    return None
                 result = self.agent_manager.agent_executor.invoke({"input": prompt})
                 extraction = self._parse_extraction_result(result.get('output', ''))
                 if extraction:
