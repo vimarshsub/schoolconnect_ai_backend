@@ -63,7 +63,7 @@ def run_sync_job() -> Dict[str, Any]:
                     if not event_details:
                         logger.info(f"No event details found in announcement {announcement.get('id')}")
                         # Mark as processed to avoid reprocessing
-                        airtable_client.update_record(announcement.get("id"), {PROCESSED_FIELD: True})
+                        airtable_client.update_record(announcement.get('id'), {PROCESSED_FIELD: True})
                         continue
 
                     # Create calendar events
@@ -81,13 +81,22 @@ def run_sync_job() -> Dict[str, Any]:
                             update_data[REMINDER_ID_FIELD] = calendar_result.get("reminder_event_id")
                         processed_count += 1
                     else:
-                        logger.warning(f"Failed to create calendar events for announcement {announcement.get(\'id\')}")
+                        logger.warning(f"Failed to create calendar events for announcement {announcement.get('id')}")
                         failed_count += 1
 
                     # Update Airtable record with event IDs and mark as processed
-                    airtable_client.update_record(announcement.get("id"), update_data)           
+                    airtable_client.update_record(announcement.get('id'), update_data)
+                    
                 except Exception as e:
-                    logger.error(f"Error processing announcement {announcement.get(\'id\')}: {str(e)}", exc_info=True)                   
+                    logger.error(f"Error processing announcement {announcement.get('id')}: {str(e)}", exc_info=True)
+                    failed_count += 1
+                    
+                    # Still mark as processed to avoid infinite retries
+                    try:
+                        airtable_client.update_record(announcement.get('id'), {PROCESSED_FIELD: True})
+                    except Exception as update_error:
+                        logger.error(f"Failed to mark announcement {announcement.get('id')} as processed: {str(update_error)}")
+        
         logger.info(f"Calendar sync job completed. Processed: {processed_count}, Failed: {failed_count}")
         
         return {
@@ -110,3 +119,4 @@ if __name__ == "__main__":
     # This allows the script to be run directly for testing
     result = run_sync_job()
     print(f"Job completed with status: {result['status']}")
+
