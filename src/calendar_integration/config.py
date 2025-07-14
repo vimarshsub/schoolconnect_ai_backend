@@ -6,7 +6,7 @@ including lookback days, reminder settings, and other options.
 """
 
 # How many days back to look for unprocessed announcements
-LOOKBACK_DAYS = 40
+LOOKBACK_DAYS = 100
 
 # Days before supplies due date to set reminder
 REMINDER_DAYS_BEFORE = 3
