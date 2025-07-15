@@ -10,7 +10,12 @@ import re
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 
-from .config import REMINDER_DAYS_BEFORE
+from .config import (
+    REMINDER_DAYS_BEFORE, 
+    DEFAULT_EVENT_TYPE, 
+    DEFAULT_EVENT_START_TIME, 
+    DEFAULT_EVENT_DURATION_HOURS
+)
 from .utils import format_event_description
 from ..ai_analysis.tools.google_calendar_tool import GoogleCalendarTool
 
@@ -65,8 +70,38 @@ class CalendarSync:
             return result
             
         except Exception as e:
-            self.logger.error(f"Error creating calendar events: {str(e)}", exc_info=True)
-            return None
+            self.logger.error(f"Error creating calendar eve            return {'success': False, 'event_id': None}
+            
+    def _should_be_all_day_event(self, event_details: Dict[str, Any]) -> bool:
+        """
+        Determine if an event should be created as all-day or timed.
+        
+        Args:
+            event_details: Dict with extracted event details
+            
+        Returns:
+            bool: True if event should be all-day, False if timed
+        """
+        # Check if event details contain specific time information
+        event_title = event_details.get('EVENT', '').lower()
+        event_description = str(event_details.get('description', '')).lower()
+        
+        # Look for time indicators in the event title or description
+        time_patterns = [
+            r'\b\d{1,2}:\d{2}\s*(am|pm|a\.m\.|p\.m\.)\b',  # 9:00 AM, 2:30 PM
+            r'\b\d{1,2}\s*(am|pm|a\.m\.|p\.m\.)\b',        # 9 AM, 2 PM
+            r'\b(morning|afternoon|evening|noon)\b',        # morning, afternoon, etc.
+            r'\b(breakfast|lunch|dinner)\b',                # meal times
+        ]
+        
+        combined_text = f"{event_title} {event_description}"
+        
+        for pattern in time_patterns:
+            if re.search(pattern, combined_text, re.IGNORECASE):
+                return False  # Has specific time, should be timed event
+        
+        # Default to configuration setting
+        return DEFAULT_EVENT_TYPE == "all_day"
             
     def _create_main_event_with_status(self, event_details: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -86,22 +121,38 @@ class CalendarSync:
             # Convert date to ISO format
             date_obj = datetime.strptime(event_date, '%Y-%m-%d')
             
-            # Create all-day event (no specific time)
-            start_date = date_obj.strftime('%Y-%m-%d')  # Use date format for all-day events
+            # Determine if this should be an all-day event
+            is_all_day = self._should_be_all_day_event(event_details)
             
             # Create event description
             description = format_event_description(event_details)
             
-            # Create the event as all-day event
-            result = self.calendar_tool.create_event(
-                title=event_details.get('EVENT'),
-                start_time=start_date,
-                end_time=None,  # Will default to next day for all-day events
-                description=description,
-                reminder_minutes=1440,  # 24 hours before
-                all_day=True
-            )
-            
+            if is_all_day:
+                # Create all-day event (no specific time)
+                start_date = date_obj.strftime('%Y-%m-%d')
+                
+                result = self.calendar_tool.create_event(
+                    title=event_details.get('EVENT'),
+                    start_time=start_date,
+                    end_time=None,  # Will default to next day for all-day events
+                    description=description,
+                    reminder_minutes=1440,  # 24 hours before
+                    all_day=True
+                )
+            else:
+                # Create timed event with default time
+                start_time = date_obj.strftime(f'%Y-%m-%dT{DEFAULT_EVENT_START_TIME}:00')
+                end_dt = date_obj.replace(hour=int(DEFAULT_EVENT_START_TIME.split(':')[0]), minute=int(DEFAULT_EVENT_START_TIME.split(':')[1])) + timedelta(hours=DEFAULT_EVENT_DURATION_HOURS)
+                end_time = end_dt.strftime('%Y-%m-%dT%H:%M:00')
+                
+                result = self.calendar_tool.create_event(
+                    title=event_details.get('EVENT'),
+                    start_time=start_time,
+                    end_time=end_time,
+                    description=description,
+                    reminder_minutes=1440,  # 24 hours before
+                    all_day=False
+                )            
             # Check if the operation was successful
             if isinstance(result, dict) and result.get('success', False):
                 # Event was successfully created
@@ -144,8 +195,9 @@ class CalendarSync:
             # Convert date to ISO format
             date_obj = datetime.strptime(reminder_date, '%Y-%m-%d')
             
-            # Create all-day reminder event (no specific time)
-            start_date = date_obj.strftime('%Y-%m-%d')  # Use date format for all-day events
+            # Reminders are typically all-day events since they're just reminders
+            # But we can still check if there's specific time information
+            is_all_day = self._should_be_all_day_event(event_details)
             
             # Create reminder title and description
             title = f"REMINDER: {event_details.get('EVENT')} - Supplies Due Soon"
@@ -154,15 +206,32 @@ class CalendarSync:
             description += f"Due date: {event_details.get('SUPPLIES DUE DATE')}\n"
             description += f"Event date: {event_details.get('DATE OF EVENT')}"
             
-            # Create the reminder as an all-day event
-            result = self.calendar_tool.create_event(
-                title=title,
-                start_time=start_date,
-                end_time=None,  # Will default to next day for all-day events
-                description=description,
-                reminder_minutes=1440,  # 24 hours before
-                all_day=True
-            )
+            if is_all_day:
+                # Create all-day reminder event (most common)
+                start_date = date_obj.strftime('%Y-%m-%d')
+                
+                result = self.calendar_tool.create_event(
+                    title=title,
+                    start_time=start_date,
+                    end_time=None,  # Will default to next day for all-day events
+                    description=description,
+                    reminder_minutes=1440,  # 24 hours before
+                    all_day=True
+                )
+            else:
+                # Create timed reminder event
+                start_time = date_obj.strftime(f'%Y-%m-%dT{DEFAULT_EVENT_START_TIME}:00')
+                end_dt = date_obj.replace(hour=int(DEFAULT_EVENT_START_TIME.split(':')[0]), minute=int(DEFAULT_EVENT_START_TIME.split(':')[1])) + timedelta(hours=DEFAULT_EVENT_DURATION_HOURS)
+                end_time = end_dt.strftime('%Y-%m-%dT%H:%M:00')
+                
+                result = self.calendar_tool.create_event(
+                    title=title,
+                    start_time=start_time,
+                    end_time=end_time,
+                    description=description,
+                    reminder_minutes=1440,  # 24 hours before
+                    all_day=False
+                )
             
             # Check if the operation was successful
             if isinstance(result, dict) and result.get('success', False):

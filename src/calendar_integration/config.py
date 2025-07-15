@@ -27,6 +27,11 @@ PROCESSED_FIELD = "CalendarProcessed"
 EVENT_ID_FIELD = "CalendarEventId"
 REMINDER_ID_FIELD = "CalendarReminderEventId"
 
+# Event creation preferences
+DEFAULT_EVENT_TYPE = "all_day"  # Options: "all_day", "timed"
+DEFAULT_EVENT_START_TIME = "09:00"  # Default start time for timed events (HH:MM)
+DEFAULT_EVENT_DURATION_HOURS = 1  # Default duration for timed events
+
 # Log settings
 LOG_LEVEL = "INFO"
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

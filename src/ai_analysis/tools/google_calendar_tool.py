@@ -125,7 +125,10 @@ class GoogleCalendarTool:
                     "title": title,
                     "start_date": start_time,  # Use start_date for all-day events
                     "end_date": end_time,      # Use end_date for all-day events
-                    "all_day": True
+                    "all_day": True,
+                    # Also include datetime format for backward compatibility
+                    "start_datetime": f"{start_time}T00:00:00",
+                    "end_datetime": f"{end_time}T00:00:00"
                 }
             else:
                 # For timed events, use datetime format
@@ -140,13 +143,26 @@ class GoogleCalendarTool:
                         logger.error(error_msg)
                         return {'success': False, 'message': error_msg, 'event_id': None}
                 
+                # Extract date components for compatibility
+                try:
+                    start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                    end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+                    start_date = start_dt.strftime('%Y-%m-%d')
+                    end_date = end_dt.strftime('%Y-%m-%d')
+                except ValueError:
+                    start_date = start_time[:10]  # Extract YYYY-MM-DD
+                    end_date = end_time[:10]
+                
                 # Prepare request data for timed event
                 data = {
                     "action": "create_event",
                     "title": title,
                     "start_datetime": start_time,
                     "end_datetime": end_time,
-                    "all_day": False
+                    "all_day": False,
+                    # Also include date format for compatibility
+                    "start_date": start_date,
+                    "end_date": end_date
                 }
             
             if description:
