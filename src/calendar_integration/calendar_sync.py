@@ -70,7 +70,8 @@ class CalendarSync:
             return result
             
         except Exception as e:
-            self.logger.error(f"Error creating calendar eve            return {'success': False, 'event_id': None}
+            self.logger.error(f"Error creating calendar events: {str(e)}", exc_info=True)
+            return None
             
     def _should_be_all_day_event(self, event_details: Dict[str, Any]) -> bool:
         """
