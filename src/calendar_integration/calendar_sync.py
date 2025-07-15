@@ -44,12 +44,12 @@ class CalendarSync:
             self.logger.info(f"Creating calendar events for: {event_details.get('EVENT')}")
             
             # Create main event
-            main_event_id = self._create_main_event(event_details)
-            if not main_event_id:
+            main_event_result = self._create_main_event_with_status(event_details)
+            if not main_event_result['success']:
                 return None
                 
             result = {
-                'main_event_id': main_event_id,
+                'main_event_id': main_event_result['event_id'],
                 'reminder_event_id': None
             }
             
@@ -59,14 +59,127 @@ class CalendarSync:
                 event_details.get('REMINDER DATE') and 
                 event_details.get('REMINDER DATE') not in ['N/A', 'Unknown']):
                 
-                reminder_event_id = self._create_reminder_event(event_details)
-                result['reminder_event_id'] = reminder_event_id
+                reminder_result = self._create_reminder_event_with_status(event_details)
+                result['reminder_event_id'] = reminder_result['event_id'] if reminder_result['success'] else None
                 
             return result
             
         except Exception as e:
             self.logger.error(f"Error creating calendar events: {str(e)}", exc_info=True)
             return None
+            
+    def _create_main_event_with_status(self, event_details: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create the main calendar event and return success status.
+        
+        Args:
+            event_details: Dict with extracted event details
+            
+        Returns:
+            Dict with 'success' (bool) and 'event_id' (str or None)
+        """
+        try:
+            event_date = event_details.get('DATE OF EVENT')
+            if not event_date or event_date == 'Unknown':
+                return {'success': False, 'event_id': None}
+                
+            # Convert date to ISO format
+            date_obj = datetime.strptime(event_date, '%Y-%m-%d')
+            start_time = date_obj.strftime('%Y-%m-%dT09:00:00')  # Default to 9 AM
+            end_time = date_obj.strftime('%Y-%m-%dT10:00:00')    # Default to 1 hour duration
+            
+            # Create event description
+            description = format_event_description(event_details)
+            
+            # Create the event
+            result = self.calendar_tool.create_event(
+                title=event_details.get('EVENT'),
+                start_time=start_time,
+                end_time=end_time,
+                description=description,
+                reminder_minutes=1440  # 24 hours before
+            )
+            
+            # Check if the operation was successful
+            if isinstance(result, dict) and result.get('success', False):
+                # Event was successfully created
+                event_id = self._extract_event_id_from_result(result)
+                self.logger.info(f"Created main calendar event with ID: {event_id}")
+                return {'success': True, 'event_id': event_id}
+            elif isinstance(result, dict) and not result.get('success', False):
+                # Event creation failed
+                self.logger.error(f"Calendar tool failed to create event: {result.get('message', 'Unknown error')}")
+                return {'success': False, 'event_id': None}
+            else:
+                # Legacy string response - assume success if no error message
+                event_id = self._extract_event_id_from_result(result)
+                if "Error" in str(result) or "Failed" in str(result):
+                    self.logger.error(f"Calendar tool failed to create event: {result}")
+                    return {'success': False, 'event_id': None}
+                else:
+                    self.logger.info(f"Created main calendar event with ID: {event_id}")
+                    return {'success': True, 'event_id': event_id}
+            
+        except Exception as e:
+            self.logger.error(f"Error creating main event: {str(e)}", exc_info=True)
+            return {'success': False, 'event_id': None}
+            
+    def _create_reminder_event_with_status(self, event_details: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create reminder calendar event and return success status.
+        
+        Args:
+            event_details: Dict with extracted event details
+            
+        Returns:
+            Dict with 'success' (bool) and 'event_id' (str or None)
+        """
+        try:
+            reminder_date = event_details.get('REMINDER DATE')
+            if not reminder_date or reminder_date in ['N/A', 'Unknown']:
+                return {'success': False, 'event_id': None}
+                
+            # Convert date to ISO format
+            date_obj = datetime.strptime(reminder_date, '%Y-%m-%d')
+            start_time = date_obj.strftime('%Y-%m-%dT09:00:00')  # Default to 9 AM
+            
+            # Create reminder title and description
+            title = f"REMINDER: {event_details.get('EVENT')} - Supplies Due Soon"
+            description = f"This is a reminder to prepare the following supplies for {event_details.get('EVENT')}:\n\n"
+            description += f"Supplies needed: {event_details.get('SUPPLIES NEEDED')}\n"
+            description += f"Due date: {event_details.get('SUPPLIES DUE DATE')}\n"
+            description += f"Event date: {event_details.get('DATE OF EVENT')}"
+            
+            # Create the reminder
+            result = self.calendar_tool.create_reminder(
+                title=title,
+                due_date=start_time,
+                description=description
+            )
+            
+            # Check if the operation was successful
+            if isinstance(result, dict) and result.get('success', False):
+                # Reminder was successfully created
+                event_id = self._extract_event_id_from_result(result)
+                self.logger.info(f"Created reminder calendar event with ID: {event_id}")
+                return {'success': True, 'event_id': event_id}
+            elif isinstance(result, dict) and not result.get('success', False):
+                # Reminder creation failed
+                self.logger.error(f"Calendar tool failed to create reminder: {result.get('message', 'Unknown error')}")
+                return {'success': False, 'event_id': None}
+            else:
+                # Legacy string response - assume success if no error message
+                event_id = self._extract_event_id_from_result(result)
+                if "Error" in str(result) or "Failed" in str(result):
+                    self.logger.error(f"Calendar tool failed to create reminder: {result}")
+                    return {'success': False, 'event_id': None}
+                else:
+                    self.logger.info(f"Created reminder calendar event with ID: {event_id}")
+                    return {'success': True, 'event_id': event_id}
+            
+        except Exception as e:
+            self.logger.error(f"Error creating reminder event: {str(e)}", exc_info=True)
+            return {'success': False, 'event_id': None}
             
     def _create_main_event(self, event_details: Dict[str, Any]) -> Optional[str]:
         """
