@@ -146,16 +146,35 @@ class GoogleCalendarTool:
             if response.status_code == 200:
                 result = response.json()
                 logger.info(f"Successfully created calendar event: {title}")
-                return f"Successfully created calendar event: {title} from {start_time} to {end_time}"
+                
+                # Try to extract event ID from the response
+                event_id = None
+                if isinstance(result, dict):
+                    # Check common fields where event ID might be returned
+                    event_id = result.get('id') or result.get('event_id') or result.get('eventId')
+                    
+                if event_id:
+                    return {
+                        'success': True,
+                        'message': f"Successfully created calendar event: {title} from {start_time} to {end_time}",
+                        'event_id': event_id
+                    }
+                else:
+                    # If no event ID found, return success message with indication
+                    return {
+                        'success': True,
+                        'message': f"Successfully created calendar event: {title} from {start_time} to {end_time}",
+                        'event_id': None
+                    }
             else:
                 error_msg = f"Failed to create event. Status code: {response.status_code}, Response: {response.text}"
                 logger.error(error_msg)
-                return error_msg
+                return {'success': False, 'message': error_msg, 'event_id': None}
                 
         except Exception as e:
             error_msg = f"Error creating calendar event: {str(e)}"
             logger.error(error_msg, exc_info=True)
-            return error_msg
+            return {'success': False, 'message': error_msg, 'event_id': None}
     
     def create_reminder(self, title, due_date, description=None):
         """
@@ -203,16 +222,35 @@ class GoogleCalendarTool:
             if response.status_code == 200:
                 result = response.json()
                 logger.info(f"Successfully created calendar reminder: {title}")
-                return f"Successfully created calendar reminder: {title} due on {due_date}"
+                
+                # Try to extract event ID from the response
+                event_id = None
+                if isinstance(result, dict):
+                    # Check common fields where event ID might be returned
+                    event_id = result.get('id') or result.get('event_id') or result.get('eventId')
+                    
+                if event_id:
+                    return {
+                        'success': True,
+                        'message': f"Successfully created calendar reminder: {title} due on {due_date}",
+                        'event_id': event_id
+                    }
+                else:
+                    # If no event ID found, return success message with indication
+                    return {
+                        'success': True,
+                        'message': f"Successfully created calendar reminder: {title} due on {due_date}",
+                        'event_id': None
+                    }
             else:
                 error_msg = f"Failed to create reminder. Status code: {response.status_code}, Response: {response.text}"
                 logger.error(error_msg)
-                return error_msg
+                return {'success': False, 'message': error_msg, 'event_id': None}
                 
         except Exception as e:
             error_msg = f"Error creating calendar reminder: {str(e)}"
             logger.error(error_msg, exc_info=True)
-            return error_msg
+            return {'success': False, 'message': error_msg, 'event_id': None}
 
     def delete_event(self, event_id):
         """

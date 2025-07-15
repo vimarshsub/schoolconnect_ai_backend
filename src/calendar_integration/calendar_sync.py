@@ -100,6 +100,11 @@ class CalendarSync:
                 reminder_minutes=1440  # 24 hours before
             )
             
+            # Check if the operation was successful
+            if isinstance(result, dict) and not result.get('success', False):
+                self.logger.error(f"Calendar tool failed to create event: {result.get('message', 'Unknown error')}")
+                return None
+            
             # Extract event ID from result
             event_id = self._extract_event_id_from_result(result)
             
@@ -143,6 +148,11 @@ class CalendarSync:
                 description=description
             )
             
+            # Check if the operation was successful
+            if isinstance(result, dict) and not result.get('success', False):
+                self.logger.error(f"Calendar tool failed to create reminder: {result.get('message', 'Unknown error')}")
+                return None
+            
             # Extract event ID from result
             reminder_id = self._extract_event_id_from_result(result)
             
@@ -163,13 +173,19 @@ class CalendarSync:
         Returns:
             Event ID or None if extraction failed
         """
-        # This implementation depends on how your GoogleCalendarTool returns results
-        if isinstance(result, str) and "Successfully created" in result:
+        # Handle new dictionary format from GoogleCalendarTool
+        if isinstance(result, dict):
+            if result.get('success') and result.get('event_id'):
+                return result['event_id']
+            elif 'id' in result:
+                # Fallback for other dictionary formats
+                return result['id']
+        
+        # Handle legacy string format
+        elif isinstance(result, str) and "Successfully created" in result:
             # Example: extract ID from "Successfully created calendar event: My Event with ID: 123456"
             match = re.search(r"ID: ([a-zA-Z0-9_-]+)", result)
             if match:
                 return match.group(1)
-        elif isinstance(result, dict) and 'id' in result:
-            # If the tool returns a dictionary with an ID field
-            return result['id']
+        
         return None
