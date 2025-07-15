@@ -85,19 +85,21 @@ class CalendarSync:
                 
             # Convert date to ISO format
             date_obj = datetime.strptime(event_date, '%Y-%m-%d')
-            start_time = date_obj.strftime('%Y-%m-%dT09:00:00')  # Default to 9 AM
-            end_time = date_obj.strftime('%Y-%m-%dT10:00:00')    # Default to 1 hour duration
+            
+            # Create all-day event (no specific time)
+            start_date = date_obj.strftime('%Y-%m-%d')  # Use date format for all-day events
             
             # Create event description
             description = format_event_description(event_details)
             
-            # Create the event
+            # Create the event as all-day event
             result = self.calendar_tool.create_event(
                 title=event_details.get('EVENT'),
-                start_time=start_time,
-                end_time=end_time,
+                start_time=start_date,
+                end_time=None,  # Will default to next day for all-day events
                 description=description,
-                reminder_minutes=1440  # 24 hours before
+                reminder_minutes=1440,  # 24 hours before
+                all_day=True
             )
             
             # Check if the operation was successful
@@ -141,7 +143,9 @@ class CalendarSync:
                 
             # Convert date to ISO format
             date_obj = datetime.strptime(reminder_date, '%Y-%m-%d')
-            start_time = date_obj.strftime('%Y-%m-%dT09:00:00')  # Default to 9 AM
+            
+            # Create all-day reminder event (no specific time)
+            start_date = date_obj.strftime('%Y-%m-%d')  # Use date format for all-day events
             
             # Create reminder title and description
             title = f"REMINDER: {event_details.get('EVENT')} - Supplies Due Soon"
@@ -150,11 +154,14 @@ class CalendarSync:
             description += f"Due date: {event_details.get('SUPPLIES DUE DATE')}\n"
             description += f"Event date: {event_details.get('DATE OF EVENT')}"
             
-            # Create the reminder
-            result = self.calendar_tool.create_reminder(
+            # Create the reminder as an all-day event
+            result = self.calendar_tool.create_event(
                 title=title,
-                due_date=start_time,
-                description=description
+                start_time=start_date,
+                end_time=None,  # Will default to next day for all-day events
+                description=description,
+                reminder_minutes=1440,  # 24 hours before
+                all_day=True
             )
             
             # Check if the operation was successful

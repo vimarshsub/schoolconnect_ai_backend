@@ -82,18 +82,19 @@ class GoogleCalendarTool:
                 "message": str(e)
             }
     
-    def create_event(self, title, start_time, end_time=None, description=None, location=None, attendees=None, reminder_minutes=None):
+    def create_event(self, title, start_time, end_time=None, description=None, location=None, attendees=None, reminder_minutes=None, all_day=False):
         """
         Create a new event in Google Calendar.
         
         Args:
             title (str): Title of the event
-            start_time (str): Start date and time in ISO format (YYYY-MM-DDTHH:MM:SS)
-            end_time (str, optional): End date and time in ISO format
+            start_time (str): Start date and time in ISO format (YYYY-MM-DDTHH:MM:SS) or date format (YYYY-MM-DD) for all-day events
+            end_time (str, optional): End date and time in ISO format or date format for all-day events
             description (str, optional): Description of the event
             location (str, optional): Location of the event
             attendees (list, optional): List of email addresses of attendees
             reminder_minutes (int, optional): Reminder time in minutes before the event
+            all_day (bool, optional): Whether this is an all-day event
             
         Returns:
             str: Success message or error message
@@ -103,26 +104,50 @@ class GoogleCalendarTool:
             if not title:
                 error_msg = "Error: Event title is required"
                 logger.error(error_msg)
-                return error_msg
+                return {'success': False, 'message': error_msg, 'event_id': None}
             
-            # Set end time to 1 hour after start time if not provided
-            if not end_time:
-                try:
-                    start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-                    end_dt = start_dt + timedelta(hours=1)
-                    end_time = end_dt.isoformat().replace('+00:00', 'Z')
-                except ValueError:
-                    error_msg = "Error: Invalid start_time format. Please use ISO format (YYYY-MM-DDTHH:MM:SS)"
-                    logger.error(error_msg)
-                    return error_msg
-            
-            # Prepare request data
-            data = {
-                "action": "create_event",
-                "title": title,
-                "start_datetime": start_time,
-                "end_datetime": end_time
-            }
+            if all_day:
+                # For all-day events, use date format (YYYY-MM-DD)
+                if not end_time:
+                    # For all-day events, end date should be the next day
+                    try:
+                        start_date = datetime.strptime(start_time, '%Y-%m-%d')
+                        end_date = start_date + timedelta(days=1)
+                        end_time = end_date.strftime('%Y-%m-%d')
+                    except ValueError:
+                        error_msg = "Error: Invalid start_time format for all-day event. Please use date format (YYYY-MM-DD)"
+                        logger.error(error_msg)
+                        return {'success': False, 'message': error_msg, 'event_id': None}
+                
+                # Prepare request data for all-day event
+                data = {
+                    "action": "create_event",
+                    "title": title,
+                    "start_date": start_time,  # Use start_date for all-day events
+                    "end_date": end_time,      # Use end_date for all-day events
+                    "all_day": True
+                }
+            else:
+                # For timed events, use datetime format
+                # Set end time to 1 hour after start time if not provided
+                if not end_time:
+                    try:
+                        start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                        end_dt = start_dt + timedelta(hours=1)
+                        end_time = end_dt.isoformat().replace('+00:00', 'Z')
+                    except ValueError:
+                        error_msg = "Error: Invalid start_time format. Please use ISO format (YYYY-MM-DDTHH:MM:SS)"
+                        logger.error(error_msg)
+                        return {'success': False, 'message': error_msg, 'event_id': None}
+                
+                # Prepare request data for timed event
+                data = {
+                    "action": "create_event",
+                    "title": title,
+                    "start_datetime": start_time,
+                    "end_datetime": end_time,
+                    "all_day": False
+                }
             
             if description:
                 data["description"] = description
