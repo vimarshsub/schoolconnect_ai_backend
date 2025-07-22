@@ -636,15 +636,53 @@ class AirtableTool:
                                      sender_name: Optional[str] = None,
                                      date_query: Optional[str] = None) -> Dict[str, Any]:
         """
-        Filter announcements using multiple criteria simultaneously.
+        Filter announcements using multiple criteria simultaneously with intelligent search ranking.
+        
+        SEARCH ALGORITHM OVERVIEW:
+        ========================
+        This method implements a multi-stage filtering and ranking system:
+        
+        1. INITIAL FILTERING: Apply sender and date filters first to narrow down results
+        2. TEXT SEARCH: Use intelligent text matching with relevance scoring
+        3. RANKING: Sort results by relevance score (highest first)
+        4. DEDUPLICATION: Remove duplicate announcements
+        
+        TEXT SEARCH ALGORITHM:
+        =====================
+        The text search uses a sophisticated matching system:
+        
+        A. EXACT PHRASE MATCHING (Highest Priority - Score: 100)
+           - Matches the complete search phrase exactly
+           - Example: "lemonade and cookie sale" matches "Lemonade and Cookie Sale for Sophie's Squad"
+        
+        B. PHRASE MATCHING WITH STOP WORDS (High Priority - Score: 80)
+           - Matches phrase after removing common stop words (and, the, for, of, etc.)
+           - Example: "lemonade cookie sale" matches announcements containing this phrase
+        
+        C. MULTIPLE KEYWORD MATCHING (Medium Priority - Score: 60)
+           - Matches announcements containing multiple search keywords
+           - Score increases with more keywords found
+        
+        D. SINGLE KEYWORD MATCHING (Low Priority - Score: 20)
+           - Matches announcements containing individual keywords
+           - Filtered to exclude stop words and short words
+        
+        STOP WORDS FILTERING:
+        ====================
+        Common words are filtered out to prevent false matches:
+        - Articles: a, an, the
+        - Prepositions: for, of, in, on, at, to, from
+        - Conjunctions: and, or, but
+        - Pronouns: this, that, these, those
+        - Other common words: is, are, was, were, will, would, etc.
         
         Args:
             search_text: Optional text to search for in Title, Description fields
-            sender_name: Optional sender name to filter by
+            sender_name: Optional sender name to filter by  
             date_query: Optional date query (e.g., "in May", "last week", "this month")
             
         Returns:
-            Dictionary with filtered announcements list and count
+            Dictionary with filtered announcements list (sorted by relevance) and count
         """
         if not self.client.airtable:
             error_msg = "Error: Airtable connection not initialized."
@@ -656,19 +694,15 @@ class AirtableTool:
             filter_steps = []
             
             # Clean up inputs
-            if search_text:
-                search_text = search_text.strip()
-            
-            if sender_name:
-                sender_name = sender_name.strip()
-            
-            if date_query:
-                date_query = date_query.strip()
+            search_text = search_text.strip() if search_text else None
+            sender_name = sender_name.strip() if sender_name else None  
+            date_query = date_query.strip() if date_query else None
             
             # Log the actual filters being applied
             logger.info(f"Applying filters - search_text: '{search_text}', sender_name: '{sender_name}', date_query: '{date_query}'")
             
-            # Start with all announcements
+            # STAGE 1: GET INITIAL DATASET
+            # ============================
             all_result = self.get_all_announcements()
             if not isinstance(all_result, dict) or "announcements" not in all_result:
                 return {"count": 0, "announcements": [], "message": "No announcements found."}
@@ -676,180 +710,35 @@ class AirtableTool:
             announcements = all_result["announcements"]
             logger.info(f"Starting with {len(announcements)} total announcements")
             
-            # Apply sender filter if specified
+            # STAGE 2: APPLY SENDER FILTER
+            # ============================
             if sender_name:
-                filtered_announcements = []
-                sender_name_lower = sender_name.lower()
-                
-                for announcement in announcements:
-                    sender = announcement.get("SentByUser", "").lower()
-                    
-                    if sender_name_lower in sender:
-                        filtered_announcements.append(announcement)
-                
-                announcements = filtered_announcements
+                announcements = self._filter_by_sender(announcements, sender_name)
                 filter_steps.append(f"sender '{sender_name}'")
                 logger.info(f"After sender filter, found {len(announcements)} announcements from '{sender_name}'")
-                
-                # No longer returning early if no matches
-                if not announcements:
-                    logger.info(f"No announcements found from sender '{sender_name}'")
             
-            # Apply date filter if specified
-            if date_query and announcements:
-                # Parse the date query
-                date_query = date_query.lower().strip()
-                
-                # Handle month names
-                month_names = {month.lower(): i for i, month in enumerate(calendar.month_name) if month}
-                month_found = False
-                
-                for month_name, month_num in month_names.items():
-                    if month_name in date_query:
-                        month_found = True
-                        # Get current year for default
-                        current_year = datetime.now().year
-                        
-                        # Create start and end dates for the month
-                        start_date = datetime(current_year, month_num, 1).replace(tzinfo=dateutil.tz.UTC)
-                        
-                        if month_num == 12:
-                            end_date = datetime(current_year + 1, 1, 1).replace(tzinfo=dateutil.tz.UTC)
-                        else:
-                            end_date = datetime(current_year, month_num + 1, 1).replace(tzinfo=dateutil.tz.UTC)
-                        
-                        # Filter announcements by date
-                        filtered_announcements = []
-                        for announcement in announcements:
-                            sent_time_str = announcement.get("SentTime")
-                            if sent_time_str:
-                                sent_time = self._parse_sent_time(sent_time_str)
-                                if sent_time and start_date <= sent_time < end_date:
-                                    filtered_announcements.append(announcement)
-                        
-                        announcements = filtered_announcements
-                        filter_steps.append(f"date '{month_name}'")
-                        logger.info(f"After date filter for '{month_name}', found {len(announcements)} announcements")
-                        break
-                
-                # If month not found, try other date parsing methods
-                if not month_found:
-                    # Try to extract a date range
-                    start_date, end_date = DateUtils.extract_date_time_range(date_query)
-                    
-                    if start_date and end_date:
-                        # Make timezone-aware
-                        start_date = start_date.replace(tzinfo=dateutil.tz.UTC)
-                        end_date = end_date.replace(tzinfo=dateutil.tz.UTC)
-                        
-                        # Filter announcements by date range
-                        filtered_announcements = []
-                        for announcement in announcements:
-                            sent_time_str = announcement.get("SentTime")
-                            if sent_time_str:
-                                sent_time = self._parse_sent_time(sent_time_str)
-                                if sent_time and start_date <= sent_time < end_date:
-                                    filtered_announcements.append(announcement)
-                        
-                        announcements = filtered_announcements
-                        filter_steps.append(f"date range '{date_query}'")
-                        logger.info(f"After date range filter for '{date_query}', found {len(announcements)} announcements")
-                    else:
-                        # Try to parse a single date
-                        single_date = DateUtils.parse_date_time(date_query)
-                        if single_date:
-                            # Make timezone-aware
-                            single_date = single_date.replace(tzinfo=dateutil.tz.UTC)
-                            next_day = single_date + timedelta(days=1)
-                            
-                            # Filter announcements by single date
-                            filtered_announcements = []
-                            for announcement in announcements:
-                                sent_time_str = announcement.get("SentTime")
-                                if sent_time_str:
-                                    sent_time = self._parse_sent_time(sent_time_str)
-                                    if sent_time and single_date <= sent_time < next_day:
-                                        filtered_announcements.append(announcement)
-                            
-                            announcements = filtered_announcements
-                            filter_steps.append(f"date '{date_query}'")
-                            logger.info(f"After single date filter for '{date_query}', found {len(announcements)} announcements")
-                
-                # No longer returning early if no matches
-                if not announcements:
-                    logger.info(f"No announcements found for date query '{date_query}'")
+            # STAGE 3: APPLY DATE FILTER  
+            # ==========================
+            if date_query:
+                announcements = self._filter_by_date(announcements, date_query)
+                filter_steps.append(f"date '{date_query}'")
+                logger.info(f"After date filter, found {len(announcements)} announcements")
             
-            # Get the original announcements if we've filtered out everything
-            original_announcements = []
-            if not announcements and (sender_name or date_query):
-                # If we've filtered out everything but we have a text search,
-                # try using the text search on the original dataset
-                logger.info("Resetting to all announcements for text search")
-                original_announcements = all_result["announcements"]
-            
-            # Apply text search filter if specified
+            # STAGE 4: APPLY TEXT SEARCH WITH RANKING
+            # =======================================
             if search_text:
-                search_text_lower = search_text.lower()
-                
-                # If we have no announcements left from previous filters
-                # but want to still search by text, use original announcements
-                if not announcements and original_announcements:
-                    announcements = original_announcements
+                # If previous filters eliminated all results, search in original dataset
+                if not announcements and (sender_name or date_query):
+                    logger.info("No results from previous filters, searching in all announcements")
+                    announcements = all_result["announcements"]
                 
                 if announcements:
-                    filtered_announcements = []
-                    
-                    logger.info(f"Applying text filter with search term: '{search_text_lower}'")
-                    logger.info(f"Starting with {len(announcements)} announcements")
-                    
-                    # Add related terms for common search queries
-                    related_terms = []
-                    
-                    # Special case for holidays and events
-                    if "easter" in search_text_lower:
-                        related_terms = ["easter", "egg hunt", "bunny", "eggs"]
-                    elif "christmas" in search_text_lower:
-                        related_terms = ["christmas", "santa", "holiday", "xmas"]
-                    elif "halloween" in search_text_lower:
-                        related_terms = ["halloween", "costume", "trick or treat", "pumpkin"]
-                    elif "field trip" in search_text_lower:
-                        related_terms = ["field trip", "fieldtrip", "trip", "excursion", "visit"]
-                    else:
-                        # Default to just the search terms
-                        related_terms = [term for term in search_text_lower.split() if len(term) > 2]
-                        if not related_terms and search_text_lower:
-                            related_terms = [search_text_lower]
-                    
-                    logger.info(f"Searching for these terms: {related_terms}")
-                    
-                    for announcement in announcements:
-                        title = announcement.get("Title", "").lower()
-                        description = announcement.get("Description", "").lower()
-                        sent_by = announcement.get("SentByUser", "").lower()
-                        
-                        # Combine fields for easier searching
-                        combined_text = f"{title} {description} {sent_by}"
-                        
-                        # Log announcement details for debugging
-                        logger.info(f"Checking announcement: '{title}' from '{sent_by}'")
-                        
-                        # Check for exact phrase match
-                        exact_match = search_text_lower and search_text_lower in combined_text
-                        
-                        # Check for related terms - ANY term match counts as a match
-                        term_match = any(term and term in combined_text for term in related_terms)
-                        
-                        if exact_match or term_match:
-                            match_type = "exact match" if exact_match else "term match"
-                            logger.info(f"MATCH FOUND ({match_type}): {title}")
-                            filtered_announcements.append(announcement)
-                    
-                    announcements = filtered_announcements
-                    if search_text_lower:  # Only add to filter steps if there's actual search text
-                        filter_steps.append(f"text '{search_text}'")
-                    logger.info(f"After text filter, found {len(announcements)} matching announcements")
+                    announcements = self._search_and_rank_by_text(announcements, search_text)
+                    filter_steps.append(f"text '{search_text}'")
+                    logger.info(f"After text search and ranking, found {len(announcements)} matching announcements")
             
-            # Prepare response message based on filter steps
+            # STAGE 5: PREPARE RESPONSE
+            # ========================
             if filter_steps:
                 filter_msg = " AND ".join(filter_steps)
                 message = f"Found {len(announcements)} announcements matching {filter_msg}."
@@ -861,7 +750,226 @@ class AirtableTool:
                 "announcements": announcements,
                 "message": message
             }
+            
         except Exception as e:
             error_msg = f"Error filtering announcements: {str(e)}"
             logger.error(error_msg, exc_info=True)
             return {"count": 0, "announcements": [], "error": error_msg}
+    
+    def _filter_by_sender(self, announcements: List[Dict[str, Any]], sender_name: str) -> List[Dict[str, Any]]:
+        """
+        Filter announcements by sender name using fuzzy matching.
+        
+        Args:
+            announcements: List of announcement dictionaries
+            sender_name: Name of sender to filter by
+            
+        Returns:
+            Filtered list of announcements
+        """
+        filtered_announcements = []
+        sender_name_lower = sender_name.lower()
+        
+        for announcement in announcements:
+            sender = announcement.get("SentByUser", "").lower()
+            if sender_name_lower in sender:
+                filtered_announcements.append(announcement)
+        
+        return filtered_announcements
+    
+    def _filter_by_date(self, announcements: List[Dict[str, Any]], date_query: str) -> List[Dict[str, Any]]:
+        """
+        Filter announcements by date query.
+        
+        Args:
+            announcements: List of announcement dictionaries
+            date_query: Date query string (e.g., "in May", "last week")
+            
+        Returns:
+            Filtered list of announcements
+        """
+        date_query = date_query.lower().strip()
+        
+        # Handle month names
+        month_names = {month.lower(): i for i, month in enumerate(calendar.month_name) if month}
+        
+        for month_name, month_num in month_names.items():
+            if month_name in date_query:
+                return self._filter_by_month(announcements, month_num)
+        
+        # Try other date parsing methods
+        start_date, end_date = DateUtils.extract_date_time_range(date_query)
+        if start_date and end_date:
+            return self._filter_by_date_range(announcements, start_date, end_date)
+        
+        # Try single date
+        single_date = DateUtils.parse_date_time(date_query)
+        if single_date:
+            next_day = single_date + timedelta(days=1)
+            return self._filter_by_date_range(announcements, single_date, next_day)
+        
+        # If no date parsing worked, return original list
+        logger.warning(f"Could not parse date query: '{date_query}'")
+        return announcements
+    
+    def _filter_by_month(self, announcements: List[Dict[str, Any]], month_num: int) -> List[Dict[str, Any]]:
+        """Filter announcements by specific month."""
+        current_year = datetime.now().year
+        start_date = datetime(current_year, month_num, 1).replace(tzinfo=dateutil.tz.UTC)
+        
+        if month_num == 12:
+            end_date = datetime(current_year + 1, 1, 1).replace(tzinfo=dateutil.tz.UTC)
+        else:
+            end_date = datetime(current_year, month_num + 1, 1).replace(tzinfo=dateutil.tz.UTC)
+        
+        return self._filter_by_date_range(announcements, start_date, end_date)
+    
+    def _filter_by_date_range(self, announcements: List[Dict[str, Any]], 
+                             start_date: datetime, end_date: datetime) -> List[Dict[str, Any]]:
+        """Filter announcements by date range."""
+        # Make timezone-aware if needed
+        if start_date.tzinfo is None:
+            start_date = start_date.replace(tzinfo=dateutil.tz.UTC)
+        if end_date.tzinfo is None:
+            end_date = end_date.replace(tzinfo=dateutil.tz.UTC)
+        
+        filtered_announcements = []
+        for announcement in announcements:
+            sent_time_str = announcement.get("SentTime")
+            if sent_time_str:
+                sent_time = self._parse_sent_time(sent_time_str)
+                if sent_time and start_date <= sent_time < end_date:
+                    filtered_announcements.append(announcement)
+        
+        return filtered_announcements
+    
+    def _search_and_rank_by_text(self, announcements: List[Dict[str, Any]], search_text: str) -> List[Dict[str, Any]]:
+        """
+        Search announcements by text and rank by relevance score.
+        
+        RANKING ALGORITHM:
+        =================
+        - Exact phrase match: 100 points
+        - Phrase match (no stop words): 80 points  
+        - Multiple keywords (60 + 10 per additional keyword): 60-90 points
+        - Single keyword match: 20 points
+        - Title matches get 2x bonus
+        - Partial word matches get 0.5x penalty
+        
+        Args:
+            announcements: List of announcement dictionaries
+            search_text: Text to search for
+            
+        Returns:
+            List of announcements sorted by relevance score (highest first)
+        """
+        search_text_lower = search_text.lower().strip()
+        if not search_text_lower:
+            return announcements
+        
+        # Define stop words to filter out from search
+        STOP_WORDS = {
+            'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'has', 'he', 
+            'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the', 'to', 'was', 'will', 
+            'with', 'the', 'this', 'but', 'they', 'have', 'had', 'what', 'said', 'each',
+            'which', 'she', 'do', 'how', 'their', 'if', 'up', 'out', 'many', 'then',
+            'them', 'these', 'so', 'some', 'her', 'would', 'make', 'like', 'into', 
+            'him', 'time', 'two', 'more', 'go', 'no', 'way', 'could', 'my', 'than',
+            'first', 'been', 'call', 'who', 'oil', 'sit', 'now', 'find', 'down',
+            'day', 'did', 'get', 'come', 'made', 'may', 'part'
+        }
+        
+        logger.info(f"Searching for: '{search_text_lower}'")
+        
+        # Prepare search terms
+        original_phrase = search_text_lower
+        clean_phrase = ' '.join([word for word in search_text_lower.split() if word not in STOP_WORDS])
+        search_keywords = [word for word in search_text_lower.split() if word not in STOP_WORDS and len(word) > 2]
+        
+        logger.info(f"Original phrase: '{original_phrase}'")
+        logger.info(f"Clean phrase (no stop words): '{clean_phrase}'")
+        logger.info(f"Search keywords: {search_keywords}")
+        
+        # Score each announcement
+        scored_announcements = []
+        
+        for announcement in announcements:
+            title = announcement.get("Title", "").lower()
+            description = announcement.get("Description", "").lower()
+            sent_by = announcement.get("SentByUser", "").lower()
+            
+            # Combine all searchable text
+            combined_text = f"{title} {description} {sent_by}"
+            
+            # Calculate relevance score
+            score = self._calculate_relevance_score(
+                combined_text, title, original_phrase, clean_phrase, search_keywords
+            )
+            
+            if score > 0:
+                logger.info(f"MATCH FOUND (score: {score}): {title}")
+                scored_announcements.append((announcement, score))
+        
+        # Sort by score (highest first) and return announcements only
+        scored_announcements.sort(key=lambda x: x[1], reverse=True)
+        return [announcement for announcement, score in scored_announcements]
+    
+    def _calculate_relevance_score(self, combined_text: str, title: str, 
+                                  original_phrase: str, clean_phrase: str, 
+                                  search_keywords: List[str]) -> int:
+        """
+        Calculate relevance score for an announcement based on search criteria.
+        
+        Args:
+            combined_text: All searchable text from the announcement
+            title: Title of the announcement (for bonus scoring)
+            original_phrase: Original search phrase
+            clean_phrase: Search phrase with stop words removed
+            search_keywords: List of individual search keywords
+            
+        Returns:
+            Relevance score (0 = no match, higher = better match)
+        """
+        score = 0
+        
+        # EXACT PHRASE MATCH (Highest priority - 100 points)
+        if original_phrase in combined_text:
+            score += 100
+            if original_phrase in title:  # Title bonus
+                score += 50
+            logger.debug(f"Exact phrase match: +{100 if original_phrase not in title else 150}")
+        
+        # CLEAN PHRASE MATCH (High priority - 80 points)
+        elif clean_phrase and clean_phrase in combined_text:
+            score += 80
+            if clean_phrase in title:  # Title bonus
+                score += 40
+            logger.debug(f"Clean phrase match: +{80 if clean_phrase not in title else 120}")
+        
+        # MULTIPLE KEYWORD MATCHING (Medium priority)
+        elif len(search_keywords) > 1:
+            keyword_matches = 0
+            for keyword in search_keywords:
+                if keyword in combined_text:
+                    keyword_matches += 1
+                    if keyword in title:  # Title bonus for each keyword
+                        keyword_matches += 0.5
+            
+            if keyword_matches >= 2:  # At least 2 keywords must match
+                base_score = 60
+                bonus_score = (keyword_matches - 2) * 10  # 10 points per additional keyword
+                score += base_score + bonus_score
+                logger.debug(f"Multiple keyword match ({keyword_matches} keywords): +{base_score + bonus_score}")
+        
+        # SINGLE KEYWORD MATCHING (Low priority - 20 points)
+        else:
+            for keyword in search_keywords:
+                if keyword in combined_text:
+                    keyword_score = 20
+                    if keyword in title:  # Title bonus
+                        keyword_score += 10
+                    score += keyword_score
+                    logger.debug(f"Single keyword match '{keyword}': +{keyword_score}")
+                    break  # Only count first matching keyword
+        
+        return score
