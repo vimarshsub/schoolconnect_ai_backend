@@ -440,7 +440,32 @@ When searching for announcements:
   - search_text: "easter"
   - sender_name: "Sierra Robbins"
   - date_query: "in May"
-- Present results in a clear, organized manner
+
+IMPORTANT - When presenting announcement results:
+- ALWAYS start with the total count: "Found X announcements..."
+- If there are more than 15 announcements, show only the first 15 and provide a summary
+- For each announcement, include: Title, Sent By, Sent Time, and a brief description
+- Use a numbered list format for clarity
+- At the end, if there are more results, say: "Showing first 15 of X total results. Would you like to see more specific announcements or filter further?"
+- Never truncate mid-sentence or use "... and many more" without offering next steps
+- For large result sets, offer filtering suggestions like "Would you like to see only field trip announcements?" or "Should I filter by a specific sender?"
+
+Example format for announcement results:
+"Found 29 announcements from May 2025:
+
+1. **Title:** Power Outage at Merryhill School-Please Read!
+   **Sent By:** Jessica Arciniega - Principal
+   **Sent Time:** May 27, 2025
+   **Description:** Emergency announcement about power outage and early pickup times.
+
+2. **Title:** Sophie's Squad-Walk 4 Hearing (Reminder)
+   **Sent By:** Jessica Arciniega - Principal  
+   **Sent Time:** May 1, 2025
+   **Description:** Reminder about the Bay Area Walk4Hearing event on May 18th.
+
+[Continue for up to 15 items]
+
+Showing first 15 of 29 total results. Would you like to see more announcements or filter by a specific topic?"
 
 When working with calendar events:
 - Help users create, search, and manage calendar events
